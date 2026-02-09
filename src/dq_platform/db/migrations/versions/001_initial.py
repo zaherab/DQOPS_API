@@ -5,7 +5,8 @@ Revises:
 Create Date: 2026-02-01
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
@@ -13,15 +14,17 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "001_initial"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     # Create enum types
     op.execute("CREATE TYPE connection_type AS ENUM ('postgresql', 'mysql', 'sqlserver', 'bigquery', 'snowflake')")
-    op.execute("CREATE TYPE check_type AS ENUM ('row_count', 'row_count_min', 'row_count_max', 'schema_column_count', 'schema_column_exists', 'table_availability', 'data_freshness', 'null_count', 'null_percent', 'not_null', 'distinct_count', 'duplicate_count', 'unique', 'custom_sql')")
+    op.execute(
+        "CREATE TYPE check_type AS ENUM ('row_count', 'row_count_min', 'row_count_max', 'schema_column_count', 'schema_column_exists', 'table_availability', 'data_freshness', 'null_count', 'null_percent', 'not_null', 'distinct_count', 'duplicate_count', 'unique', 'custom_sql')"
+    )
     op.execute("CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed', 'cancelled')")
     op.execute("CREATE TYPE incident_status AS ENUM ('open', 'acknowledged', 'resolved')")
     op.execute("CREATE TYPE incident_severity AS ENUM ('low', 'medium', 'high', 'critical')")
@@ -32,7 +35,13 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
-        sa.Column("connection_type", postgresql.ENUM("postgresql", "mysql", "sqlserver", "bigquery", "snowflake", name="connection_type", create_type=False), nullable=False),
+        sa.Column(
+            "connection_type",
+            postgresql.ENUM(
+                "postgresql", "mysql", "sqlserver", "bigquery", "snowflake", name="connection_type", create_type=False
+            ),
+            nullable=False,
+        ),
         sa.Column("config_encrypted", postgresql.JSONB, nullable=False, server_default="{}"),
         sa.Column("metadata", postgresql.JSONB, nullable=True),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
@@ -46,8 +55,34 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
-        sa.Column("connection_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("connections.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("check_type", postgresql.ENUM("row_count", "row_count_min", "row_count_max", "schema_column_count", "schema_column_exists", "table_availability", "data_freshness", "null_count", "null_percent", "not_null", "distinct_count", "duplicate_count", "unique", "custom_sql", name="check_type", create_type=False), nullable=False),
+        sa.Column(
+            "connection_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("connections.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "check_type",
+            postgresql.ENUM(
+                "row_count",
+                "row_count_min",
+                "row_count_max",
+                "schema_column_count",
+                "schema_column_exists",
+                "table_availability",
+                "data_freshness",
+                "null_count",
+                "null_percent",
+                "not_null",
+                "distinct_count",
+                "duplicate_count",
+                "unique",
+                "custom_sql",
+                name="check_type",
+                create_type=False,
+            ),
+            nullable=False,
+        ),
         sa.Column("target_schema", sa.String(255), nullable=True),
         sa.Column("target_table", sa.String(255), nullable=False),
         sa.Column("target_column", sa.String(255), nullable=True),
@@ -63,8 +98,17 @@ def upgrade() -> None:
     op.create_table(
         "jobs",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("status", postgresql.ENUM("pending", "running", "completed", "failed", "cancelled", name="job_status", create_type=False), nullable=False, server_default="pending"),
+        sa.Column(
+            "check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "status",
+            postgresql.ENUM(
+                "pending", "running", "completed", "failed", "cancelled", name="job_status", create_type=False
+            ),
+            nullable=False,
+            server_default="pending",
+        ),
         sa.Column("celery_task_id", sa.String(255), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
@@ -81,8 +125,12 @@ def upgrade() -> None:
         "check_results",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("executed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("job_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "job_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("connection_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("target_table", sa.String(255), nullable=False),
         sa.Column("target_column", sa.String(255), nullable=True),
@@ -107,9 +155,21 @@ def upgrade() -> None:
     op.create_table(
         "incidents",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("status", postgresql.ENUM("open", "acknowledged", "resolved", name="incident_status", create_type=False), nullable=False, server_default="open"),
-        sa.Column("severity", postgresql.ENUM("low", "medium", "high", "critical", name="incident_severity", create_type=False), nullable=False, server_default="medium"),
+        sa.Column(
+            "check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "status",
+            postgresql.ENUM("open", "acknowledged", "resolved", name="incident_status", create_type=False),
+            nullable=False,
+            server_default="open",
+        ),
+        sa.Column(
+            "severity",
+            postgresql.ENUM("low", "medium", "high", "critical", name="incident_severity", create_type=False),
+            nullable=False,
+            server_default="medium",
+        ),
         sa.Column("title", sa.String(500), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column("first_failure_at", sa.DateTime(timezone=True), nullable=False),
@@ -133,7 +193,9 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
-        sa.Column("check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "check_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("checks.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("cron_expression", sa.String(100), nullable=False),
         sa.Column("timezone", sa.String(50), nullable=False, server_default="UTC"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),

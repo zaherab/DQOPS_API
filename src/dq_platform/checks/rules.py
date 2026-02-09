@@ -4,9 +4,10 @@ Rules are Python functions that evaluate sensor output against thresholds.
 They determine the severity (passed, warning, error, fatal) of a check result.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 
 
 class Severity(str, Enum):
@@ -81,7 +82,7 @@ def _min_value_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
     min_val = params.get("min_value")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or min_val is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected >= {min_val}",
@@ -90,7 +91,7 @@ def _min_value_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
             passed=False,
         )
 
-    passed = sensor_value >= min_val
+    passed = sensor_value >= float(min_val)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Value {sensor_value} is {'>=' if passed else '<'} {min_val}",
@@ -110,7 +111,7 @@ def _max_value_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
     max_val = params.get("max_value")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or max_val is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected <= {max_val}",
@@ -119,7 +120,7 @@ def _max_value_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
             passed=False,
         )
 
-    passed = sensor_value <= max_val
+    passed = sensor_value <= float(max_val)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Value {sensor_value} is {'<=' if passed else '>'} {max_val}",
@@ -180,7 +181,7 @@ def _min_percent_rule(sensor_value: float | None, params: dict[str, Any]) -> Rul
     min_pct = params.get("min_percent")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or min_pct is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected >= {min_pct}%",
@@ -189,7 +190,7 @@ def _min_percent_rule(sensor_value: float | None, params: dict[str, Any]) -> Rul
             passed=False,
         )
 
-    passed = sensor_value >= min_pct
+    passed = sensor_value >= float(min_pct)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Percentage {sensor_value:.2f}% is {'>=' if passed else '<'} {min_pct}%",
@@ -209,7 +210,7 @@ def _max_percent_rule(sensor_value: float | None, params: dict[str, Any]) -> Rul
     max_pct = params.get("max_percent")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or max_pct is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected <= {max_pct}%",
@@ -218,7 +219,7 @@ def _max_percent_rule(sensor_value: float | None, params: dict[str, Any]) -> Rul
             passed=False,
         )
 
-    passed = sensor_value <= max_pct
+    passed = sensor_value <= float(max_pct)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Percentage {sensor_value:.2f}% is {'<=' if passed else '>'} {max_pct}%",
@@ -279,7 +280,7 @@ def _max_change_percent_rule(sensor_value: float | None, params: dict[str, Any])
     max_change = params.get("max_change_percent")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or max_change is None:
         return RuleResult(
             severity=severity,
             message="Could not calculate change (insufficient historical data)",
@@ -288,7 +289,7 @@ def _max_change_percent_rule(sensor_value: float | None, params: dict[str, Any])
             passed=False,
         )
 
-    passed = abs(sensor_value) <= max_change
+    passed = abs(sensor_value) <= float(max_change)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Change of {sensor_value:.2f}% is {'within' if passed else 'exceeds'} limit of {max_change}%",
@@ -313,7 +314,7 @@ def _min_count_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
     min_cnt = params.get("min_count")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or min_cnt is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected >= {min_cnt}",
@@ -322,7 +323,7 @@ def _min_count_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
             passed=False,
         )
 
-    passed = sensor_value >= min_cnt
+    passed = sensor_value >= float(min_cnt)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Count {int(sensor_value)} is {'>=' if passed else '<'} {min_cnt}",
@@ -342,7 +343,7 @@ def _max_count_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
     max_cnt = params.get("max_count")
     severity = Severity(params.get("severity", Severity.ERROR.value))
 
-    if sensor_value is None:
+    if sensor_value is None or max_cnt is None:
         return RuleResult(
             severity=severity,
             message=f"Sensor returned NULL, expected <= {max_cnt}",
@@ -351,7 +352,7 @@ def _max_count_rule(sensor_value: float | None, params: dict[str, Any]) -> RuleR
             passed=False,
         )
 
-    passed = sensor_value <= max_cnt
+    passed = sensor_value <= float(max_cnt)
     return RuleResult(
         severity=Severity.PASSED if passed else severity,
         message=f"Count {int(sensor_value)} is {'<=' if passed else '>'} {max_cnt}",

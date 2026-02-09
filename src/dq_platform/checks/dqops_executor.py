@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check

@@ -35,17 +35,11 @@ class Schedule(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Execution tracking
-    last_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    next_run_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    check: Mapped["Check"] = relationship(
-        "Check", back_populates="schedules", lazy="joined"
-    )
+    check: Mapped["Check"] = relationship("Check", back_populates="schedules", lazy="joined")
 
     def __repr__(self) -> str:
         return f"<Schedule(id={self.id}, check_id={self.check_id}, cron={self.cron_expression})>"

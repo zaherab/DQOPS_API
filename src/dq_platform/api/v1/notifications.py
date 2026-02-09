@@ -1,5 +1,6 @@
 """Notification channel endpoints."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
@@ -42,7 +43,7 @@ async def list_channels(
     is_active: bool | None = None,
 ) -> PaginatedResponse[NotificationChannelResponse]:
     """List notification channels."""
-    channels, total = await service.list(offset=offset, limit=limit, is_active=is_active)
+    channels, total = await service.list_channels(offset=offset, limit=limit, is_active=is_active)
     return PaginatedResponse(
         items=[NotificationChannelResponse.model_validate(c) for c in channels],
         total=total,
@@ -61,6 +62,7 @@ async def get_channel(
     channel = await service.get(channel_id)
     if not channel:
         from dq_platform.api.errors import NotFoundError
+
         raise NotFoundError("NotificationChannel", str(channel_id))
     return NotificationChannelResponse.model_validate(channel)
 
@@ -84,6 +86,7 @@ async def update_channel(
     )
     if not channel:
         from dq_platform.api.errors import NotFoundError
+
         raise NotFoundError("NotificationChannel", str(channel_id))
     return NotificationChannelResponse.model_validate(channel)
 
@@ -98,6 +101,7 @@ async def delete_channel(
     deleted = await service.delete(channel_id)
     if not deleted:
         from dq_platform.api.errors import NotFoundError
+
         raise NotFoundError("NotificationChannel", str(channel_id))
 
 
@@ -106,6 +110,6 @@ async def test_channel(
     channel_id: UUID,
     service: NotificationServiceDep,
     api_key: APIKey,
-) -> dict:
+) -> dict[str, Any]:
     """Send a test webhook to verify configuration."""
     return await service.send_test(channel_id)

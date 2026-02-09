@@ -11,7 +11,6 @@ Note: For full API integration tests, run test_api_checks.py with:
 """
 
 import sys
-from datetime import datetime
 
 
 def print_result(test_name: str, passed: bool, details: str = "") -> None:
@@ -28,10 +27,10 @@ def test_sensors() -> dict:
     """Test sensor definitions and SQL generation."""
     from dq_platform.checks.sensors import (
         SensorType,
-        get_sensor,
-        list_sensors,
         get_column_level_sensors,
+        get_sensor,
         get_table_level_sensors,
+        list_sensors,
     )
 
     results = {"passed": 0, "failed": 0}
@@ -51,12 +50,12 @@ def test_sensors() -> dict:
     col_sensors = get_column_level_sensors()
     table_sensors = get_table_level_sensors()
     if len(col_sensors) > 0 and len(table_sensors) > 0:
-        print_result("Column vs Table level sensors", True,
-                    f"{len(col_sensors)} column-level, {len(table_sensors)} table-level")
+        print_result(
+            "Column vs Table level sensors", True, f"{len(col_sensors)} column-level, {len(table_sensors)} table-level"
+        )
         results["passed"] += 1
     else:
-        print_result("Column vs Table level sensors", False,
-                    f"Column: {len(col_sensors)}, Table: {len(table_sensors)}")
+        print_result("Column vs Table level sensors", False, f"Column: {len(col_sensors)}, Table: {len(table_sensors)}")
         results["failed"] += 1
 
     # Test get_sensor for specific types
@@ -73,16 +72,19 @@ def test_sensors() -> dict:
             print_result(f"Get sensor: {expected_name}", True)
             results["passed"] += 1
         else:
-            print_result(f"Get sensor: {expected_name}", False,
-                        f"Name: {sensor.name}, is_column_level: {sensor.is_column_level}")
+            print_result(
+                f"Get sensor: {expected_name}", False, f"Name: {sensor.name}, is_column_level: {sensor.is_column_level}"
+            )
             results["failed"] += 1
 
     # Test SQL rendering
     row_count_sensor = get_sensor(SensorType.ROW_COUNT)
-    sql = row_count_sensor.render({
-        "schema_name": "public",
-        "table_name": "users",
-    })
+    sql = row_count_sensor.render(
+        {
+            "schema_name": "public",
+            "table_name": "users",
+        }
+    )
     if "SELECT COUNT(*)" in sql and "public" in sql and "users" in sql:
         print_result("SQL rendering: row_count", True)
         results["passed"] += 1
@@ -92,12 +94,14 @@ def test_sensors() -> dict:
 
     # Test SQL rendering with partition filter
     nulls_sensor = get_sensor(SensorType.NULLS_PERCENT)
-    sql = nulls_sensor.render({
-        "schema_name": "public",
-        "table_name": "users",
-        "column_name": "email",
-        "partition_filter": "created_at >= '2024-01-01'",
-    })
+    sql = nulls_sensor.render(
+        {
+            "schema_name": "public",
+            "table_name": "users",
+            "column_name": "email",
+            "partition_filter": "created_at >= '2024-01-01'",
+        }
+    )
     if "NULL" in sql and "email" in sql and "partition_filter" not in sql:
         # partition_filter should be used in the WHERE clause
         print_result("SQL rendering: nulls_percent with partition", True)
@@ -113,8 +117,8 @@ def test_rules() -> dict:
     """Test rule evaluation functions."""
     from dq_platform.checks.rules import (
         RuleType,
-        evaluate_rule,
         Severity,
+        evaluate_rule,
         list_rules,
     )
 
@@ -140,8 +144,20 @@ def test_rules() -> dict:
         (RuleType.MIN_PERCENT, 85.0, {"min_percent": 90.0, "severity": "error"}, False, Severity.ERROR),
         (RuleType.MAX_COUNT, 5, {"max_count": 10, "severity": "error"}, True, Severity.PASSED),
         (RuleType.MAX_COUNT, 15, {"max_count": 10, "severity": "error"}, False, Severity.ERROR),
-        (RuleType.MIN_MAX_VALUE, 50.0, {"min_value": 10.0, "max_value": 100.0, "severity": "error"}, True, Severity.PASSED),
-        (RuleType.MIN_MAX_VALUE, 5.0, {"min_value": 10.0, "max_value": 100.0, "severity": "error"}, False, Severity.ERROR),
+        (
+            RuleType.MIN_MAX_VALUE,
+            50.0,
+            {"min_value": 10.0, "max_value": 100.0, "severity": "error"},
+            True,
+            Severity.PASSED,
+        ),
+        (
+            RuleType.MIN_MAX_VALUE,
+            5.0,
+            {"min_value": 10.0, "max_value": 100.0, "severity": "error"},
+            False,
+            Severity.ERROR,
+        ),
         (RuleType.MAX_CHANGE_PERCENT, 5.0, {"max_change_percent": 10.0, "severity": "error"}, True, Severity.PASSED),
         (RuleType.MAX_CHANGE_PERCENT, 15.0, {"max_change_percent": 10.0, "severity": "error"}, False, Severity.ERROR),
     ]
@@ -149,13 +165,19 @@ def test_rules() -> dict:
     for rule_type, sensor_value, params, expected_passed, expected_severity in test_cases:
         result = evaluate_rule(rule_type, sensor_value, params)
         if result.passed == expected_passed and result.severity == expected_severity:
-            print_result(f"Rule: {rule_type.value} with {sensor_value}", True,
-                        f"passed={result.passed}, severity={result.severity.value}")
+            print_result(
+                f"Rule: {rule_type.value} with {sensor_value}",
+                True,
+                f"passed={result.passed}, severity={result.severity.value}",
+            )
             results["passed"] += 1
         else:
-            print_result(f"Rule: {rule_type.value} with {sensor_value}", False,
-                        f"Expected passed={expected_passed}, severity={expected_severity.value}, "
-                        f"Got passed={result.passed}, severity={result.severity.value}")
+            print_result(
+                f"Rule: {rule_type.value} with {sensor_value}",
+                False,
+                f"Expected passed={expected_passed}, severity={expected_severity.value}, "
+                f"Got passed={result.passed}, severity={result.severity.value}",
+            )
             results["failed"] += 1
 
     # Test null handling
@@ -164,8 +186,11 @@ def test_rules() -> dict:
         print_result("Rule: null value handling", True)
         results["passed"] += 1
     else:
-        print_result("Rule: null value handling", False,
-                    f"Expected failed with error, got passed={result.passed}, severity={result.severity.value}")
+        print_result(
+            "Rule: null value handling",
+            False,
+            f"Expected failed with error, got passed={result.passed}, severity={result.severity.value}",
+        )
         results["failed"] += 1
 
     # Test ANOMALY_PERCENTILE rule
@@ -173,121 +198,117 @@ def test_rules() -> dict:
 
     # Test 1: Insufficient history (< 7 values) -> PASSED
     result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 100.0,
-        {"_historical_values": [1.0, 2.0, 3.0], "severity": "error"}
+        RuleType.ANOMALY_PERCENTILE, 100.0, {"_historical_values": [1.0, 2.0, 3.0], "severity": "error"}
     )
     if result.passed and result.severity == Severity.PASSED:
         print_result("Anomaly: insufficient history -> PASSED", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: insufficient history -> PASSED", False,
-                    f"Expected passed=True, got passed={result.passed}")
+        print_result(
+            "Anomaly: insufficient history -> PASSED", False, f"Expected passed=True, got passed={result.passed}"
+        )
         results["failed"] += 1
 
     # Test 2: Normal value within IQR -> PASSED
     history = [10.0, 12.0, 11.0, 13.0, 10.5, 11.5, 12.5, 11.0, 12.0, 10.0]
-    result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 11.0,
-        {"_historical_values": history, "severity": "error"}
-    )
+    result = evaluate_rule(RuleType.ANOMALY_PERCENTILE, 11.0, {"_historical_values": history, "severity": "error"})
     if result.passed and result.severity == Severity.PASSED:
         print_result("Anomaly: normal value within IQR -> PASSED", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: normal value within IQR -> PASSED", False,
-                    f"Expected passed=True, got passed={result.passed}, msg={result.message}")
+        print_result(
+            "Anomaly: normal value within IQR -> PASSED",
+            False,
+            f"Expected passed=True, got passed={result.passed}, msg={result.message}",
+        )
         results["failed"] += 1
 
     # Test 3: Anomalous value above upper bound -> severity
-    result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 100.0,
-        {"_historical_values": history, "severity": "error"}
-    )
+    result = evaluate_rule(RuleType.ANOMALY_PERCENTILE, 100.0, {"_historical_values": history, "severity": "error"})
     if not result.passed and result.severity == Severity.ERROR:
         print_result("Anomaly: value above upper bound -> ERROR", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: value above upper bound -> ERROR", False,
-                    f"Expected passed=False, severity=error, got passed={result.passed}, severity={result.severity.value}")
+        print_result(
+            "Anomaly: value above upper bound -> ERROR",
+            False,
+            f"Expected passed=False, severity=error, got passed={result.passed}, severity={result.severity.value}",
+        )
         results["failed"] += 1
 
     # Test 4: Anomalous value below lower bound -> severity
-    result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, -50.0,
-        {"_historical_values": history, "severity": "warning"}
-    )
+    result = evaluate_rule(RuleType.ANOMALY_PERCENTILE, -50.0, {"_historical_values": history, "severity": "warning"})
     if not result.passed and result.severity == Severity.WARNING:
         print_result("Anomaly: value below lower bound -> WARNING", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: value below lower bound -> WARNING", False,
-                    f"Expected passed=False, severity=warning, got passed={result.passed}, severity={result.severity.value}")
+        print_result(
+            "Anomaly: value below lower bound -> WARNING",
+            False,
+            f"Expected passed=False, severity=warning, got passed={result.passed}, severity={result.severity.value}",
+        )
         results["failed"] += 1
 
     # Test 5: Null sensor value with sufficient history -> severity
-    result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, None,
-        {"_historical_values": history, "severity": "error"}
-    )
+    result = evaluate_rule(RuleType.ANOMALY_PERCENTILE, None, {"_historical_values": history, "severity": "error"})
     if not result.passed and result.severity == Severity.ERROR:
         print_result("Anomaly: null sensor value -> ERROR", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: null sensor value -> ERROR", False,
-                    f"Expected passed=False, got passed={result.passed}")
+        print_result("Anomaly: null sensor value -> ERROR", False, f"Expected passed=False, got passed={result.passed}")
         results["failed"] += 1
 
     # Test 6: All identical history (IQR=0) -> only that value passes
     identical_history = [5.0] * 10
     result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 5.0,
-        {"_historical_values": identical_history, "severity": "error"}
+        RuleType.ANOMALY_PERCENTILE, 5.0, {"_historical_values": identical_history, "severity": "error"}
     )
     if result.passed:
         print_result("Anomaly: identical history, same value -> PASSED", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: identical history, same value -> PASSED", False,
-                    f"Expected passed=True, got passed={result.passed}, msg={result.message}")
+        print_result(
+            "Anomaly: identical history, same value -> PASSED",
+            False,
+            f"Expected passed=True, got passed={result.passed}, msg={result.message}",
+        )
         results["failed"] += 1
 
     result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 6.0,
-        {"_historical_values": identical_history, "severity": "error"}
+        RuleType.ANOMALY_PERCENTILE, 6.0, {"_historical_values": identical_history, "severity": "error"}
     )
     if not result.passed:
         print_result("Anomaly: identical history, different value -> FAIL", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: identical history, different value -> FAIL", False,
-                    f"Expected passed=False, got passed={result.passed}")
+        print_result(
+            "Anomaly: identical history, different value -> FAIL",
+            False,
+            f"Expected passed=False, got passed={result.passed}",
+        )
         results["failed"] += 1
 
     # Test 7: History with None values -> filtered out
     history_with_nones = [10.0, None, 12.0, 11.0, None, 13.0, 10.5, 11.5, 12.5, 11.0]
     result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 11.0,
-        {"_historical_values": history_with_nones, "severity": "error"}
+        RuleType.ANOMALY_PERCENTILE, 11.0, {"_historical_values": history_with_nones, "severity": "error"}
     )
     if result.passed:
         print_result("Anomaly: history with Nones filtered -> PASSED", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: history with Nones filtered -> PASSED", False,
-                    f"Expected passed=True, got passed={result.passed}")
+        print_result(
+            "Anomaly: history with Nones filtered -> PASSED", False, f"Expected passed=True, got passed={result.passed}"
+        )
         results["failed"] += 1
 
     # Test 8: Empty historical values -> insufficient history
-    result = evaluate_rule(
-        RuleType.ANOMALY_PERCENTILE, 50.0,
-        {"_historical_values": [], "severity": "error"}
-    )
+    result = evaluate_rule(RuleType.ANOMALY_PERCENTILE, 50.0, {"_historical_values": [], "severity": "error"})
     if result.passed and result.severity == Severity.PASSED:
         print_result("Anomaly: empty history -> PASSED", True)
         results["passed"] += 1
     else:
-        print_result("Anomaly: empty history -> PASSED", False,
-                    f"Expected passed=True, got passed={result.passed}")
+        print_result("Anomaly: empty history -> PASSED", False, f"Expected passed=True, got passed={result.passed}")
         results["failed"] += 1
 
     return results
@@ -298,10 +319,10 @@ def test_dqops_checks() -> dict:
     from dq_platform.checks.dqops_checks import (
         DQOpsCheckType,
         get_check,
-        list_checks,
+        get_checks_by_category,
         get_column_level_checks,
         get_table_level_checks,
-        get_checks_by_category,
+        list_checks,
     )
 
     results = {"passed": 0, "failed": 0}
@@ -321,18 +342,30 @@ def test_dqops_checks() -> dict:
     col_checks = get_column_level_checks()
     table_checks = get_table_level_checks()
     if len(col_checks) > 0 and len(table_checks) > 0:
-        print_result("Column vs Table level checks", True,
-                    f"{len(col_checks)} column-level, {len(table_checks)} table-level")
+        print_result(
+            "Column vs Table level checks", True, f"{len(col_checks)} column-level, {len(table_checks)} table-level"
+        )
         results["passed"] += 1
     else:
-        print_result("Column vs Table level checks", False,
-                    f"Column: {len(col_checks)}, Table: {len(table_checks)}")
+        print_result("Column vs Table level checks", False, f"Column: {len(col_checks)}, Table: {len(table_checks)}")
         results["failed"] += 1
 
     # Test categories
-    categories = ["volume", "nulls", "uniqueness", "numeric", "text", "geographic",
-                  "boolean", "datetime", "patterns", "referential", "custom_sql",
-                  "anomaly", "comparison"]
+    categories = [
+        "volume",
+        "nulls",
+        "uniqueness",
+        "numeric",
+        "text",
+        "geographic",
+        "boolean",
+        "datetime",
+        "patterns",
+        "referential",
+        "custom_sql",
+        "anomaly",
+        "comparison",
+    ]
     for cat in categories:
         cat_checks = get_checks_by_category(cat)
         if len(cat_checks) > 0:
@@ -362,13 +395,19 @@ def test_dqops_checks() -> dict:
     for check_type, expected_category, is_column_level in test_cases:
         check = get_check(check_type)
         if check.category == expected_category and check.is_column_level == is_column_level:
-            print_result(f"Check: {check_type.value}", True,
-                        f"category={check.category}, sensor={check.sensor_type.value}, rule={check.rule_type.value}")
+            print_result(
+                f"Check: {check_type.value}",
+                True,
+                f"category={check.category}, sensor={check.sensor_type.value}, rule={check.rule_type.value}",
+            )
             results["passed"] += 1
         else:
-            print_result(f"Check: {check_type.value}", False,
-                        f"Expected category={expected_category}, is_column_level={is_column_level}, "
-                        f"Got category={check.category}, is_column_level={check.is_column_level}")
+            print_result(
+                f"Check: {check_type.value}",
+                False,
+                f"Expected category={expected_category}, is_column_level={is_column_level}, "
+                f"Got category={check.category}, is_column_level={check.is_column_level}",
+            )
             results["failed"] += 1
 
     return results
@@ -377,8 +416,8 @@ def test_dqops_checks() -> dict:
 def test_check_parameters() -> dict:
     """Test check parameter validation."""
     from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check
+    from dq_platform.checks.rules import evaluate_rule
     from dq_platform.checks.sensors import get_sensor
-    from dq_platform.checks.rules import evaluate_rule, RuleType
 
     results = {"passed": 0, "failed": 0}
 
@@ -387,8 +426,7 @@ def test_check_parameters() -> dict:
     # Test default parameters are applied
     check = get_check(DQOpsCheckType.NULLS_PERCENT)
     if check.default_params and "max_percent" in check.default_params:
-        print_result("Default params: nulls_percent", True,
-                    f"max_percent={check.default_params['max_percent']}")
+        print_result("Default params: nulls_percent", True, f"max_percent={check.default_params['max_percent']}")
         results["passed"] += 1
     else:
         print_result("Default params: nulls_percent", False, "No default max_percent found")
@@ -410,12 +448,18 @@ def test_check_parameters() -> dict:
     rule_result = evaluate_rule(check.rule_type, test_value, rule_params)
 
     if rule_result.passed:  # 3% is less than default 5%, so should pass
-        print_result("Rule evaluation with defaults", True,
-                    f"Value {test_value}% passed against max {rule_params.get('max_percent')}%")
+        print_result(
+            "Rule evaluation with defaults",
+            True,
+            f"Value {test_value}% passed against max {rule_params.get('max_percent')}%",
+        )
         results["passed"] += 1
     else:
-        print_result("Rule evaluation with defaults", False,
-                    f"Value {test_value}% failed against max {rule_params.get('max_percent')}%")
+        print_result(
+            "Rule evaluation with defaults",
+            False,
+            f"Value {test_value}% failed against max {rule_params.get('max_percent')}%",
+        )
         results["failed"] += 1
 
     return results
@@ -443,10 +487,8 @@ def main() -> int:
     print(f"Parameter Tests: {param_results['passed']} passed, {param_results['failed']} failed")
     print("=" * 60)
 
-    total_passed = (sensor_results['passed'] + rule_results['passed'] +
-                   check_results['passed'] + param_results['passed'])
-    total_failed = (sensor_results['failed'] + rule_results['failed'] +
-                   check_results['failed'] + param_results['failed'])
+    total_passed = sensor_results["passed"] + rule_results["passed"] + check_results["passed"] + param_results["passed"]
+    total_failed = sensor_results["failed"] + rule_results["failed"] + check_results["failed"] + param_results["failed"]
 
     print(f"Total: {total_passed} passed, {total_failed} failed")
     print("=" * 60)

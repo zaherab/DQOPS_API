@@ -51,18 +51,10 @@ class ResultService:
             Created check result.
         """
         from dq_platform.models.check import Check
-        from dq_platform.models.job import Job
 
-        # Get check and job for denormalized fields
-        check_result = await self.db.execute(
-            select(Check).where(Check.id == check_id)
-        )
+        # Get check for denormalized fields
+        check_result = await self.db.execute(select(Check).where(Check.id == check_id))
         check = check_result.scalar_one()
-
-        job_result = await self.db.execute(
-            select(Job).where(Job.id == job_id)
-        )
-        job = job_result.scalar_one()
 
         result = CheckResult(
             check_id=check_id,
@@ -103,7 +95,7 @@ class ResultService:
         expected_value: float | None = None,
         execution_time_ms: int | None = None,
         rows_scanned: int | None = None,
-        result_details: dict | None = None,
+        result_details: dict[str, Any] | None = None,
         error_message: str | None = None,
         severity: ResultSeverity = ResultSeverity.PASSED,
     ) -> CheckResult:
@@ -257,10 +249,7 @@ class ResultService:
         failed = total - passed
 
         # By severity
-        severity_query = select(
-            CheckResult.severity,
-            func.count(CheckResult.id)
-        ).group_by(CheckResult.severity)
+        severity_query = select(CheckResult.severity, func.count(CheckResult.id)).group_by(CheckResult.severity)
         for f in filters:
             severity_query = severity_query.where(f)
         severity_result = await self.db.execute(severity_query)

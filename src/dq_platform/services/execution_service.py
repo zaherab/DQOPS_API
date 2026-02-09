@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -152,9 +152,9 @@ class ExecutionService:
             job.error_message = error_message
 
         if status == JobStatus.RUNNING:
-            job.started_at = datetime.now(timezone.utc)
+            job.started_at = datetime.now(UTC)
         elif status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
 
         await self.db.flush()
         return job
@@ -174,12 +174,10 @@ class ExecutionService:
         job = await self.get_job(job_id)
 
         if job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
-            raise ValidationError(
-                f"Cannot cancel job with status '{job.status.value}'"
-            )
+            raise ValidationError(f"Cannot cancel job with status '{job.status.value}'")
 
         job.status = JobStatus.CANCELLED
-        job.completed_at = datetime.now(timezone.utc)
+        job.completed_at = datetime.now(UTC)
 
         await self.db.flush()
         return job
@@ -200,7 +198,8 @@ class ExecutionService:
 
         # Update job with task ID
         job = await self.get_job(job_id)
-        job.celery_task_id = task.id
+        task_id: str = task.id
+        job.celery_task_id = task_id
         await self.db.flush()
 
-        return task.id
+        return task_id

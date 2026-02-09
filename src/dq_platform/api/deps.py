@@ -1,13 +1,12 @@
 """API dependencies for dependency injection."""
 
-from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.core.security import verify_api_key
-from dq_platform.db.session import get_db
+from dq_platform.db.session import get_db as get_db
 from dq_platform.services.check_service import CheckService
 from dq_platform.services.connection_service import ConnectionService
 from dq_platform.services.execution_service import ExecutionService

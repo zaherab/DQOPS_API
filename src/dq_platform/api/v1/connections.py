@@ -30,7 +30,7 @@ async def create_connection(
         connection_type=data.connection_type,
         config=data.config,
         description=data.description,
-        metadata=data.metadata,
+        metadata_=data.metadata,
     )
     return ConnectionResponse.model_validate(connection)
 
@@ -44,7 +44,7 @@ async def list_connections(
     connection_type: ConnectionType | None = None,
 ) -> PaginatedResponse[ConnectionResponse]:
     """List all connections with pagination."""
-    connections, total = await service.list(
+    connections, total = await service.list_connections(
         offset=offset,
         limit=limit,
         connection_type=connection_type,
@@ -81,7 +81,7 @@ async def update_connection(
         name=data.name,
         description=data.description,
         config=data.config,
-        metadata=data.metadata,
+        metadata_=data.metadata,
     )
     return ConnectionResponse.model_validate(connection)
 

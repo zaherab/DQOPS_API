@@ -55,9 +55,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     """Register exception handlers for the application."""
 
     @app.exception_handler(DQPlatformError)
-    async def dq_platform_error_handler(
-        request: Request, exc: DQPlatformError
-    ) -> JSONResponse:
+    async def dq_platform_error_handler(request: Request, exc: DQPlatformError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={

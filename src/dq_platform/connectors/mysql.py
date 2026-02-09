@@ -37,7 +37,7 @@ class MySQLConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         """Execute a SQL query and return results."""
         if not self._connection:
             raise ExecutionError("Not connected to database")

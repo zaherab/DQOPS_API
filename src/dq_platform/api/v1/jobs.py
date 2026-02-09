@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query
 
 from dq_platform.api.deps import APIKey, ExecutionServiceDep
 from dq_platform.models.job import JobStatus

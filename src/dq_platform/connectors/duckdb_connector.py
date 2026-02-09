@@ -12,6 +12,7 @@ class DuckDBConnector(BaseConnector):
     def connect(self) -> None:
         try:
             import duckdb
+
             database = self.config.get("database", ":memory:")
             self._connection = duckdb.connect(database=database, read_only=self.config.get("read_only", False))
         except Exception as e:
@@ -26,7 +27,7 @@ class DuckDBConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         if not self._connection:
             raise ExecutionError("Not connected to database")
         try:

@@ -1,16 +1,14 @@
 """Unit tests for scheduler task and notification service."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 from dq_platform.models.incident import Incident, IncidentSeverity, IncidentStatus
 from dq_platform.models.notification import NotificationChannel, NotificationChannelType
 from dq_platform.services.notification_service import NotificationService, _map_incident_severity
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -25,8 +23,8 @@ def _make_incident(**kwargs) -> Incident:
         "title": "Check failed: nulls_percent",
         "description": "15% nulls found, threshold is 10%",
         "failure_count": 1,
-        "first_failure_at": datetime.now(timezone.utc),
-        "last_failure_at": datetime.now(timezone.utc),
+        "first_failure_at": datetime.now(UTC),
+        "last_failure_at": datetime.now(UTC),
     }
     defaults.update(kwargs)
     incident = MagicMock(spec=Incident)

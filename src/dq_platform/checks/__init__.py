@@ -11,9 +11,9 @@ from dq_platform.checks.dqops_checks import (
     list_checks,
 )
 from dq_platform.checks.dqops_executor import (
+    CheckExecutionResult,
     DQOpsExecutor,
     DQOpsLocalExecutor,
-    CheckExecutionResult,
     run_dqops_check,
 )
 from dq_platform.checks.gx_executor import GreatExpectationsExecutor, run_gx_check

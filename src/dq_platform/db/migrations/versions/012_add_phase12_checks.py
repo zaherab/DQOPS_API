@@ -9,15 +9,16 @@ Adds 19 new check types:
 - Phase 12b: Cross-source comparison (9)
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "012_add_phase12_checks"
-down_revision: Union[str, None] = "011_add_phase11_checks"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "011_add_phase11_checks"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # All 19 new check types to add
 NEW_CHECK_TYPES = [
@@ -32,7 +33,6 @@ NEW_CHECK_TYPES = [
     "median_anomaly",
     "min_anomaly",
     "max_anomaly",
-
     # Phase 12b: Cross-source comparison
     "row_count_match",
     "column_count_match",

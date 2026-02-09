@@ -5,15 +5,16 @@ Revises: 001_initial
 Create Date: 2026-02-01
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "002_add_dqops_check_types"
-down_revision: Union[str, None] = "001_initial"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "001_initial"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # New check types to add (29 total)
 NEW_CHECK_TYPES = [
@@ -70,15 +71,11 @@ POSSIBLY_EXISTING = [
 def upgrade() -> None:
     # Add check types that may already exist (from manual migrations)
     for check_type in POSSIBLY_EXISTING:
-        op.execute(
-            f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'"
-        )
+        op.execute(f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'")
 
     # Add all new DQOps-style check types
     for check_type in NEW_CHECK_TYPES:
-        op.execute(
-            f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'"
-        )
+        op.execute(f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'")
 
 
 def downgrade() -> None:

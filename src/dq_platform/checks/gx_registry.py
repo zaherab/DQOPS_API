@@ -1,12 +1,12 @@
 """Registry mapping CheckTypes to Great Expectations expectations."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import great_expectations.expectations as gxe
 from great_expectations.expectations import Expectation
 
 from dq_platform.models.check import CheckType
-
 
 # Type alias for expectation builder functions
 # Table-level checks: (parameters) -> Expectation
@@ -496,7 +496,6 @@ GX_EXPECTATION_MAP: dict[CheckType, tuple[ExpectationBuilder, bool]] = {
     CheckType.SCHEMA_COLUMN_EXISTS: (_build_schema_column_exists, False),
     CheckType.SCHEMA_COLUMN_COUNT: (_build_schema_column_count, False),
     CheckType.TABLE_AVAILABILITY: (_build_table_availability, False),
-
     # Column-level checks (is_column_level=True)
     CheckType.NULL_COUNT: (_build_null_count, True),
     CheckType.NULL_PERCENT: (_build_null_percent, True),
@@ -510,18 +509,14 @@ GX_EXPECTATION_MAP: dict[CheckType, tuple[ExpectationBuilder, bool]] = {
     CheckType.REGEX_PATTERN: (_build_regex_pattern, True),
     CheckType.ALLOWED_VALUES: (_build_allowed_values, True),
     CheckType.COLUMN_PAIR_COMPARISON: (_build_column_pair_comparison, True),
-
     # Volume (table-level)
     CheckType.ROW_COUNT_EXACT: (_build_row_count_exact, False),
     CheckType.ROW_COUNT_COMPARE: (_build_row_count_compare, False),
-
     # Schema (table-level)
     CheckType.SCHEMA_COLUMN_LIST: (_build_schema_column_list, False),
     CheckType.SCHEMA_COLUMN_ORDER: (_build_schema_column_order, False),
-
     # Completeness (column-level)
     CheckType.COMPLETENESS_PERCENT: (_build_completeness_percent, True),
-
     # Numeric/Statistical (column-level)
     CheckType.COLUMN_MIN: (_build_column_min, True),
     CheckType.COLUMN_MAX: (_build_column_max, True),
@@ -530,31 +525,25 @@ GX_EXPECTATION_MAP: dict[CheckType, tuple[ExpectationBuilder, bool]] = {
     CheckType.COLUMN_STDDEV: (_build_column_stddev, True),
     CheckType.COLUMN_SUM: (_build_column_sum, True),
     CheckType.COLUMN_QUANTILE: (_build_column_quantile, True),
-
     # Text (column-level)
     CheckType.TEXT_LENGTH_RANGE: (_build_text_length_range, True),
     CheckType.TEXT_LENGTH_EXACT: (_build_text_length_exact, True),
-
     # Patterns (column-level)
     CheckType.REGEX_NOT_MATCH: (_build_regex_not_match, True),
     CheckType.LIKE_PATTERN: (_build_like_pattern, True),
     CheckType.FORBIDDEN_VALUES: (_build_forbidden_values, True),
-
     # Datatype (column-level)
     CheckType.COLUMN_TYPE: (_build_column_type, True),
     CheckType.DATE_PARSEABLE: (_build_date_parseable, True),
     CheckType.JSON_PARSEABLE: (_build_json_parseable, True),
     CheckType.DATETIME_FORMAT: (_build_datetime_format, True),
-
     # Uniqueness (column-level)
     CheckType.UNIQUENESS_PERCENT: (_build_uniqueness_percent, True),
     CheckType.DISTINCT_VALUES_IN_SET: (_build_distinct_values_in_set, True),
     CheckType.MOST_COMMON_VALUE: (_build_most_common_value, True),
-
     # Ordering (column-level)
     CheckType.VALUES_INCREASING: (_build_values_increasing, True),
     CheckType.VALUES_DECREASING: (_build_values_decreasing, True),
-
     # Multi-column (column_pair_equal uses target_column, others are table-level)
     CheckType.COLUMN_PAIR_EQUAL: (_build_column_pair_equal, True),
     CheckType.COMPOSITE_KEY_UNIQUE: (_build_composite_key_unique, False),

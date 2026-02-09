@@ -3,6 +3,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -74,36 +75,24 @@ class Incident(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # First and last failure info
-    first_failure_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    last_failure_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    first_failure_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_failure_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     failure_count: Mapped[int] = mapped_column(default=1, nullable=False)
 
     # Resolution info
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Acknowledgment info
-    acknowledged_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     acknowledged_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Additional metadata
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True, default=dict
-    )
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True, default=dict)
 
     # Relationships
-    check: Mapped["Check"] = relationship(
-        "Check", back_populates="incidents", lazy="joined"
-    )
+    check: Mapped["Check"] = relationship("Check", back_populates="incidents", lazy="joined")
 
     __table_args__ = (
         Index("ix_incidents_status", "status"),

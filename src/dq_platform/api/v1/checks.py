@@ -9,15 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dq_platform.api.deps import get_db
 from dq_platform.api.errors import NotFoundError
 from dq_platform.checks import (
-    DQOpsCheckType,
-    get_check as get_dqops_check,
-    list_checks as list_dqops_checks,
+    get_checks_by_category,
     get_column_level_checks,
     get_table_level_checks,
-    get_checks_by_category,
+)
+from dq_platform.checks import (
+    list_checks as list_dqops_checks,
 )
 from dq_platform.checks.gx_registry import (
-    GX_EXPECTATION_MAP,
     get_check_description,
     is_column_level_check,
 )
@@ -124,7 +123,7 @@ async def list_check_types(
     for check in dqops_checks:
         check_types.append(
             CheckTypeInfo(
-                type=check.name.value,
+                type=check.name,
                 description=check.description,
                 is_column_level=check.is_column_level,
                 category=check.category,
@@ -132,7 +131,7 @@ async def list_check_types(
         )
 
     # Add legacy Great Expectations checks not yet in DQOps format
-    existing_types = {c.name.value for c in dqops_checks}
+    existing_types = {c.name for c in dqops_checks}
     for check_type in CheckType:
         if check_type.value not in existing_types:
             try:
@@ -184,7 +183,7 @@ async def batch_run_checks(
     Returns job IDs for each check execution.
     """
     execution_service = ExecutionService(db)
-    jobs = []
+    jobs: list[dict[str, Any]] = []
 
     for check_id in request.check_ids:
         try:
@@ -193,20 +192,24 @@ async def batch_run_checks(
                 triggered_by=request.triggered_by,
             )
             task_id = await execution_service.submit_job(job.id)
-            jobs.append({
-                "check_id": str(check_id),
-                "job_id": str(job.id),
-                "task_id": task_id,
-                "status": "started",
-            })
+            jobs.append(
+                {
+                    "check_id": str(check_id),
+                    "job_id": str(job.id),
+                    "task_id": task_id,
+                    "status": "started",
+                }
+            )
         except NotFoundError:
-            jobs.append({
-                "check_id": str(check_id),
-                "job_id": None,
-                "task_id": None,
-                "status": "error",
-                "message": "Check not found",
-            })
+            jobs.append(
+                {
+                    "check_id": str(check_id),
+                    "job_id": None,
+                    "task_id": None,
+                    "status": "error",
+                    "message": "Check not found",
+                }
+            )
 
     return jobs
 

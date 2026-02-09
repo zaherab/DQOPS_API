@@ -9,21 +9,21 @@ Adds 8 new check types:
 - Phase 11b: Generic change detection (7)
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "011_add_phase11_checks"
-down_revision: Union[str, None] = "010_add_missing_dqops_checks"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "010_add_missing_dqops_checks"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # All 8 new check types to add
 NEW_CHECK_TYPES = [
     # Phase 11a: Import external results
     "import_custom_result_on_table",
-
     # Phase 11b: Generic change detection
     "row_count_change",
     "nulls_percent_change",

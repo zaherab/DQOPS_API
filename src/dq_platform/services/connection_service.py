@@ -27,7 +27,7 @@ class ConnectionService:
         connection_type: ConnectionType,
         config: dict[str, Any],
         description: str | None = None,
-        metadata: dict | None = None,
+        metadata_: dict[str, Any] | None = None,
     ) -> Connection:
         """Create a new connection.
 
@@ -48,7 +48,7 @@ class ConnectionService:
             description=description,
             connection_type=connection_type,
             config_encrypted=encrypted_config,
-            metadata_=metadata or {},
+            metadata_=metadata_ or {},
         )
 
         self.db.add(connection)
@@ -97,7 +97,7 @@ class ConnectionService:
         )
         return result.scalar_one_or_none()
 
-    async def list(
+    async def list_connections(
         self,
         offset: int = 0,
         limit: int = 100,
@@ -137,7 +137,7 @@ class ConnectionService:
         name: str | None = None,
         description: str | None = None,
         config: dict[str, Any] | None = None,
-        metadata: dict | None = None,
+        metadata_: dict[str, Any] | None = None,
     ) -> Connection:
         """Update a connection.
 
@@ -159,8 +159,8 @@ class ConnectionService:
             connection.description = description
         if config is not None:
             connection.config_encrypted = encrypt_config(config)
-        if metadata is not None:
-            connection.metadata_ = metadata
+        if metadata_ is not None:
+            connection.metadata_ = metadata_
 
         await self.db.flush()
         return connection
@@ -225,9 +225,7 @@ class ConnectionService:
         with connector:
             return connector.get_tables(schema)
 
-    async def get_columns(
-        self, connection_id: uuid.UUID, schema: str, table: str
-    ) -> list[ColumnInfo]:
+    async def get_columns(self, connection_id: uuid.UUID, schema: str, table: str) -> list[ColumnInfo]:
         """Get list of columns in a table.
 
         Args:

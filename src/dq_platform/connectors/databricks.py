@@ -12,6 +12,7 @@ class DatabricksConnector(BaseConnector):
     def connect(self) -> None:
         try:
             from databricks import sql
+
             self._connection = sql.connect(
                 server_hostname=self.config.get("server_hostname"),
                 http_path=self.config.get("http_path"),
@@ -29,7 +30,7 @@ class DatabricksConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         if not self._connection:
             raise ExecutionError("Not connected to database")
         try:

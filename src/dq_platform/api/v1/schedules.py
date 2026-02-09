@@ -38,7 +38,7 @@ async def list_schedules(
     is_active: bool | None = None,
 ) -> PaginatedResponse[ScheduleResponse]:
     """List all schedules with pagination and filters."""
-    schedules, total = await service.list(
+    schedules, total = await service.list_schedules(
         offset=offset,
         limit=limit,
         check_id=check_id,

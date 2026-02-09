@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -51,12 +51,10 @@ class NotificationService:
         return channel
 
     async def get(self, channel_id: uuid.UUID) -> NotificationChannel | None:
-        result = await self.db.execute(
-            select(NotificationChannel).where(NotificationChannel.id == channel_id)
-        )
+        result = await self.db.execute(select(NotificationChannel).where(NotificationChannel.id == channel_id))
         return result.scalar_one_or_none()
 
-    async def list(
+    async def list_channels(
         self,
         offset: int = 0,
         limit: int = 100,
@@ -72,9 +70,7 @@ class NotificationService:
         count_result = await self.db.execute(count_query)
         total = len(count_result.all())
 
-        query = query.offset(offset).limit(limit).order_by(
-            NotificationChannel.created_at.desc()
-        )
+        query = query.offset(offset).limit(limit).order_by(NotificationChannel.created_at.desc())
         result = await self.db.execute(query)
         channels = list(result.scalars().all())
         return channels, total
@@ -159,7 +155,7 @@ class NotificationService:
 
         payload = {
             "event": "test",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "message": "Test notification from DQ Platform",
         }
 
@@ -209,7 +205,7 @@ class NotificationService:
         """Build the webhook JSON payload."""
         return {
             "event": event_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "incident": {
                 "id": str(incident.id),
                 "title": incident.title,

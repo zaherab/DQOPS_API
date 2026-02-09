@@ -2,7 +2,7 @@
 
 import enum
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -389,35 +389,25 @@ class Check(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     partition_by_column: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Check parameters (threshold values, custom SQL, etc.)
-    parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    parameters: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Rule parameters with severity levels (DQOps-style)
     # Format: {"warning": {"max_percent": 5}, "error": {"max_percent": 10}}
-    rule_parameters: Mapped[dict | None] = mapped_column(
+    rule_parameters: Mapped[dict[str, Any] | None] = mapped_column(
         "rule_parameters", JSONB, nullable=True, default=dict
     )
 
     # Optional metadata
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True, default=dict
-    )
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True, default=dict)
 
     # Soft delete
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Relationships
-    connection: Mapped["Connection"] = relationship(
-        "Connection", back_populates="checks", lazy="joined"
-    )
-    jobs: Mapped[list["Job"]] = relationship(
-        "Job", back_populates="check", lazy="selectin"
-    )
-    incidents: Mapped[list["Incident"]] = relationship(
-        "Incident", back_populates="check", lazy="selectin"
-    )
-    schedules: Mapped[list["Schedule"]] = relationship(
-        "Schedule", back_populates="check", lazy="selectin"
-    )
+    connection: Mapped["Connection"] = relationship("Connection", back_populates="checks", lazy="joined")
+    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="check", lazy="selectin")
+    incidents: Mapped[list["Incident"]] = relationship("Incident", back_populates="check", lazy="selectin")
+    schedules: Mapped[list["Schedule"]] = relationship("Schedule", back_populates="check", lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<Check(id={self.id}, name={self.name}, type={self.check_type})>"

@@ -1,8 +1,11 @@
 """CheckResult model for storing check execution results."""
 
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -74,7 +77,7 @@ class CheckResult(Base):
     rows_scanned: Mapped[int | None] = mapped_column(nullable=True)
 
     # Additional result details
-    result_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    result_details: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Error information (if check failed to execute)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)

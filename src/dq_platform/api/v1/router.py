@@ -2,7 +2,15 @@
 
 from fastapi import APIRouter
 
-from dq_platform.api.v1 import checks, connections, incidents, jobs, notifications, results, schedules
+from dq_platform.api.v1 import (
+    checks,
+    connections,
+    incidents,
+    jobs,
+    notifications,
+    results,
+    schedules,
+)
 
 api_router = APIRouter()
 

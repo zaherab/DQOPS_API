@@ -13,16 +13,12 @@ class NotificationChannelCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     channel_type: str = Field(default="webhook")
-    config: dict[str, Any] = Field(
-        ..., description='Webhook config: {"url": "https://...", "headers": {...}}'
-    )
+    config: dict[str, Any] = Field(..., description='Webhook config: {"url": "https://...", "headers": {...}}')
     events: list[str] = Field(
         default=["incident.opened", "incident.resolved"],
         description="Events to subscribe to",
     )
-    min_severity: str | None = Field(
-        default=None, description="Minimum severity: warning, error, or fatal"
-    )
+    min_severity: str | None = Field(default=None, description="Minimum severity: warning, error, or fatal")
 
 
 class NotificationChannelUpdate(BaseModel):

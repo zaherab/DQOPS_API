@@ -5,15 +5,16 @@ Revises: 002_add_dqops_check_types
 Create Date: 2026-02-03
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "003_add_dqops_style_checks"
-down_revision: Union[str, None] = "002_add_dqops_check_types"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "002_add_dqops_check_types"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # DQOps-style check types to add
 DQOPS_CHECK_TYPES = [
@@ -65,9 +66,7 @@ DQOPS_CHECK_TYPES = [
 def upgrade() -> None:
     """Add DQOps-style check types to the enum."""
     for check_type in DQOPS_CHECK_TYPES:
-        op.execute(
-            f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'"
-        )
+        op.execute(f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'")
 
 
 def downgrade() -> None:

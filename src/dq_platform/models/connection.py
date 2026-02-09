@@ -1,7 +1,7 @@
 """Connection model for data source connections."""
 
 import enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Enum, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -44,21 +44,17 @@ class Connection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
     )
     # Encrypted connection configuration (host, port, database, user, password, etc.)
-    config_encrypted: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    config_encrypted: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     # Optional metadata (tags, labels, etc.)
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True, default=dict
-    )
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True, default=dict)
     # Soft delete
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Relationships
-    checks: Mapped[list["Check"]] = relationship(
-        "Check", back_populates="connection", lazy="selectin"
-    )
+    checks: Mapped[list["Check"]] = relationship("Check", back_populates="connection", lazy="selectin")
 
     @property
-    def decrypted_config(self) -> dict:
+    def decrypted_config(self) -> dict[str, Any]:
         """Get decrypted connection configuration with connection_type included."""
         config = decrypt_config(self.config_encrypted)
         # Include connection_type so the ConnectorFactory can create the right connector

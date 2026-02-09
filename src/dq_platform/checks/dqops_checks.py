@@ -117,14 +117,14 @@ class DQOpsCheckType(str, Enum):
     INVALID_USA_PHONE_FORMAT_PERCENT = "invalid_usa_phone_format_percent"
     INVALID_USA_ZIPCODE_FORMAT_FOUND = "invalid_usa_zipcode_format_found"
     INVALID_USA_ZIPCODE_FORMAT_PERCENT = "invalid_usa_zipcode_format_percent"
-    
+
     # Phase 6: PII Detection checks
     CONTAINS_USA_PHONE_PERCENT = "contains_usa_phone_percent"
     CONTAINS_EMAIL_PERCENT = "contains_email_percent"
     CONTAINS_USA_ZIPCODE_PERCENT = "contains_usa_zipcode_percent"
     CONTAINS_IP4_PERCENT = "contains_ip4_percent"
     CONTAINS_IP6_PERCENT = "contains_ip6_percent"
-    
+
     # Phase 4: Accepted Values & Domain checks
     TEXT_FOUND_IN_SET_PERCENT = "text_found_in_set_percent"
     NUMBER_FOUND_IN_SET_PERCENT = "number_found_in_set_percent"
@@ -133,7 +133,7 @@ class DQOpsCheckType(str, Enum):
     EXPECTED_TEXTS_IN_TOP_VALUES_COUNT = "expected_texts_in_top_values_count"
     TEXT_VALID_COUNTRY_CODE_PERCENT = "text_valid_country_code_percent"
     TEXT_VALID_CURRENCY_CODE_PERCENT = "text_valid_currency_code_percent"
-    
+
     # Phase 5: Date Pattern & Data Type Detection checks
     TEXT_NOT_MATCHING_DATE_PATTERN_FOUND = "text_not_matching_date_pattern_found"
     TEXT_NOT_MATCHING_DATE_PATTERN_PERCENT = "text_not_matching_date_pattern_percent"
@@ -145,7 +145,7 @@ class DQOpsCheckType(str, Enum):
     TEXT_PARSABLE_TO_DATE_PERCENT = "text_parsable_to_date_percent"
     DETECTED_DATATYPE_IN_TEXT = "detected_datatype_in_text"
     DETECTED_DATATYPE_IN_TEXT_CHANGED = "detected_datatype_in_text_changed"
-    
+
     # Phase 7: Change Detection checks
     NULLS_PERCENT_CHANGE_1_DAY = "nulls_percent_change_1_day"
     NULLS_PERCENT_CHANGE_7_DAYS = "nulls_percent_change_7_days"
@@ -165,7 +165,7 @@ class DQOpsCheckType(str, Enum):
     SUM_CHANGE_1_DAY = "sum_change_1_day"
     SUM_CHANGE_7_DAYS = "sum_change_7_days"
     SUM_CHANGE_30_DAYS = "sum_change_30_days"
-    
+
     # Phase 8: Cross-Table Comparison checks
     TOTAL_ROW_COUNT_MATCH_PERCENT = "total_row_count_match_percent"
     TOTAL_SUM_MATCH_PERCENT = "total_sum_match_percent"
@@ -173,14 +173,14 @@ class DQOpsCheckType(str, Enum):
     TOTAL_MAX_MATCH_PERCENT = "total_max_match_percent"
     TOTAL_AVERAGE_MATCH_PERCENT = "total_average_match_percent"
     TOTAL_NOT_NULL_COUNT_MATCH_PERCENT = "total_not_null_count_match_percent"
-    
+
     # Phase 9: Table-Level Misc checks
     TABLE_AVAILABILITY = "table_availability"
     DATA_INGESTION_DELAY = "data_ingestion_delay"
     RELOAD_LAG = "reload_lag"
     SQL_CONDITION_PASSED_PERCENT_ON_TABLE = "sql_condition_passed_percent_on_table"
     COLUMN_TYPE_CHANGED = "column_type_changed"
-    
+
     # Referential integrity checks (column-level)
     FOREIGN_KEY_NOT_FOUND = "foreign_key_not_found"
     FOREIGN_KEY_FOUND_PERCENT = "foreign_key_found_percent"
@@ -1639,7 +1639,12 @@ TOTAL_AVERAGE_MATCH_PERCENT_CHECK = DQOpsCheck(
     sensor_type=SensorType.AVERAGE_MATCH_PERCENT,
     rule_type=RuleType.MIN_PERCENT,
     is_column_level=True,
-    default_params={"min_percent": 95.0, "reference_schema": "public", "reference_column": "id", "tolerance_percent": 0.01},
+    default_params={
+        "min_percent": 95.0,
+        "reference_schema": "public",
+        "reference_column": "id",
+        "tolerance_percent": 0.01,
+    },
 )
 
 TOTAL_NOT_NULL_COUNT_MATCH_PERCENT_CHECK = DQOpsCheck(

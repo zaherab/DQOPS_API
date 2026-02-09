@@ -12,6 +12,7 @@ class RedshiftConnector(BaseConnector):
     def connect(self) -> None:
         try:
             import redshift_connector
+
             self._connection = redshift_connector.connect(
                 host=self.config.get("host"),
                 port=int(self.config.get("port", 5439)),
@@ -32,7 +33,7 @@ class RedshiftConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         if not self._connection:
             raise ExecutionError("Not connected to database")
         try:

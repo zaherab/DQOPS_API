@@ -5,15 +5,16 @@ Revises: 004_add_result_id_to_incidents
 Create Date: 2026-02-03
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "005_add_more_dqops_checks"
-down_revision: Union[str, None] = "004_add_result_id_to_incidents"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "004_add_result_id_to_incidents"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Additional DQOps-style check types to add
 NEW_CHECK_TYPES = [
@@ -47,9 +48,7 @@ NEW_CHECK_TYPES = [
 def upgrade() -> None:
     """Add new DQOps-style check types to the enum."""
     for check_type in NEW_CHECK_TYPES:
-        op.execute(
-            f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'"
-        )
+        op.execute(f"ALTER TYPE check_type ADD VALUE IF NOT EXISTS '{check_type}'")
 
 
 def downgrade() -> None:

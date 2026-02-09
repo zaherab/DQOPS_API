@@ -23,7 +23,7 @@ async def list_incidents(
     severity: IncidentSeverity | None = None,
 ) -> PaginatedResponse[IncidentResponse]:
     """List all incidents with pagination and filters."""
-    incidents, total = await service.list(
+    incidents, total = await service.list_incidents(
         offset=offset,
         limit=limit,
         check_id=check_id,

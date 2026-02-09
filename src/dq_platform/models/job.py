@@ -3,6 +3,7 @@
 import enum
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -48,20 +49,14 @@ class Job(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     celery_task_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Execution timing
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Error information
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Execution metadata (triggered_by, schedule_id, etc.)
-    metadata_: Mapped[dict | None] = mapped_column(
-        "metadata", JSONB, nullable=True, default=dict
-    )
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True, default=dict)
 
     # Relationships
     check: Mapped["Check"] = relationship("Check", back_populates="jobs", lazy="joined")

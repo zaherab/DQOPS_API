@@ -20,7 +20,7 @@ class BigQueryConnector(BaseConnector):
 
             if credentials_json:
                 credentials = service_account.Credentials.from_service_account_info(
-                    credentials_json
+                    credentials_json  # type: ignore[no-untyped-call]
                 )
                 self._connection = bigquery.Client(
                     project=project_id,
@@ -43,17 +43,15 @@ class BigQueryConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         """Execute a SQL query and return results."""
         if not self._connection:
             raise ExecutionError("Not connected to BigQuery")
 
         try:
             job_config = bigquery.QueryJobConfig()
-            if params:
-                job_config.query_parameters = [
-                    bigquery.ScalarQueryParameter(k, "STRING", v) for k, v in params.items()
-                ]
+            if params and isinstance(params, dict):
+                job_config.query_parameters = [bigquery.ScalarQueryParameter(k, "STRING", v) for k, v in params.items()]
 
             query_job = self._connection.query(sql, job_config=job_config)
             results = query_job.result()

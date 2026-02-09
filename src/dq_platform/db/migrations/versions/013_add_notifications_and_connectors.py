@@ -9,7 +9,8 @@ Adds:
 - 4 new connection_type enum values: redshift, duckdb, oracle, databricks
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
@@ -17,9 +18,9 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "013_notif_and_connectors"
-down_revision: Union[str, None] = "012_add_phase12_checks"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "012_add_phase12_checks"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # New connection types
 NEW_CONNECTION_TYPES = ["redshift", "duckdb", "oracle", "databricks"]
@@ -29,9 +30,7 @@ def upgrade() -> None:
     """Create notification_channels table and add connector enum values."""
 
     # Create notification_channel_type enum
-    notification_channel_type = postgresql.ENUM(
-        "webhook", name="notification_channel_type", create_type=False
-    )
+    notification_channel_type = postgresql.ENUM("webhook", name="notification_channel_type", create_type=False)
     notification_channel_type.create(op.get_bind(), checkfirst=True)
 
     # Create notification_channels table

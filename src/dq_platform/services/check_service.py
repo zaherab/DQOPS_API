@@ -1,7 +1,7 @@
 """Check service for managing data quality checks."""
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -15,9 +15,11 @@ from dq_platform.checks import (
 )
 from dq_platform.checks.dqops_checks import (
     DQOpsCheckType,
+)
+from dq_platform.checks.dqops_checks import (
     get_check as get_dqops_check_def,
 )
-from dq_platform.checks.dqops_executor import CheckExecutionResult, DQOpsExecutor
+from dq_platform.checks.dqops_executor import DQOpsExecutor
 from dq_platform.checks.gx_executor import run_gx_check
 from dq_platform.checks.gx_registry import is_column_level_check
 from dq_platform.checks.rules import RuleType, evaluate_rule
@@ -102,15 +104,11 @@ class CheckService:
                 pass
 
         if is_column_level and not target_column:
-            raise ValidationError(
-                f"Column-level check '{check_type.value}' requires target_column"
-            )
+            raise ValidationError(f"Column-level check '{check_type.value}' requires target_column")
 
         # Validate partition_by_column for partitioned mode
         if check_mode == CheckMode.PARTITIONED and not partition_by_column:
-            raise ValidationError(
-                "Partitioned checks require partition_by_column"
-            )
+            raise ValidationError("Partitioned checks require partition_by_column")
 
         check = Check(
             name=name,
@@ -203,11 +201,7 @@ class CheckService:
         total = len(count_result.all())
 
         # Get paginated results
-        query = (
-            query.offset(offset)
-            .limit(limit)
-            .order_by(Check.created_at.desc())
-        )
+        query = query.offset(offset).limit(limit).order_by(Check.created_at.desc())
         result = await self.db.execute(query)
         checks = list(result.scalars().all())
 
@@ -377,7 +371,7 @@ class CheckService:
         Returns:
             Execution result.
         """
-        executed_at = datetime.now(timezone.utc)
+        executed_at = datetime.now(UTC)
 
         # Try DQOps-style execution first
         try:
@@ -402,9 +396,7 @@ class CheckService:
 
             # Cross-source: dual-connection execution (early return)
             if "reference_connection_id" in (check.parameters or {}):
-                return await self._execute_cross_source_check(
-                    check, connection_config, dqops_check_def, rule_params
-                )
+                return await self._execute_cross_source_check(check, connection_config, dqops_check_def, rule_params)
 
             # Execute DQOps check
             result = await run_dqops_check(
@@ -483,7 +475,7 @@ class CheckService:
         Returns:
             List of historical actual_value floats.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
         result = await self.db.execute(
             select(CheckResult.actual_value)
             .where(
@@ -516,7 +508,7 @@ class CheckService:
         Returns:
             Preview result with comparison outcome.
         """
-        executed_at = datetime.now(timezone.utc)
+        executed_at = datetime.now(UTC)
         params = check.parameters or {}
 
         # Get reference connection
@@ -590,11 +582,7 @@ class CheckService:
         elif max(abs(source_value), abs(ref_value)) == 0:
             match_percent = 0.0
         else:
-            match_percent = (
-                min(abs(source_value), abs(ref_value))
-                / max(abs(source_value), abs(ref_value))
-                * 100.0
-            )
+            match_percent = min(abs(source_value), abs(ref_value)) / max(abs(source_value), abs(ref_value)) * 100.0
 
         # Evaluate rule with match_percent as the sensor value
         rule_result = evaluate_rule(dqops_check_def.rule_type, match_percent, rule_params)

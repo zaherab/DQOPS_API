@@ -38,6 +38,7 @@ HEADERS = {
     "X-API-Key": API_KEY,
 }
 
+
 # Test results tracking
 @dataclass
 class TestResults:
@@ -58,14 +59,15 @@ def print_result(test_name: str, passed: bool, details: str = "") -> None:
 
 def print_section(title: str) -> None:
     """Print section header."""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {title}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
 
 # =============================================================================
 # API Helper Functions
 # =============================================================================
+
 
 def create_connection() -> str | None:
     """Create a test connection and return its ID."""
@@ -207,6 +209,7 @@ def run_test(
 # Volume Checks (4 tests)
 # =============================================================================
 
+
 def test_volume_checks(connection_id: str) -> TestResults:
     """Test all volume checks."""
     print_section("Volume Checks (4 tests)")
@@ -281,6 +284,7 @@ def test_volume_checks(connection_id: str) -> TestResults:
 # Schema Checks (2 tests)
 # =============================================================================
 
+
 def test_schema_checks(connection_id: str) -> TestResults:
     """Test all schema checks."""
     print_section("Schema Checks (2 tests)")
@@ -327,6 +331,7 @@ def test_schema_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Timeliness Checks (2 tests)
 # =============================================================================
+
 
 def test_timeliness_checks(connection_id: str) -> TestResults:
     """Test all timeliness checks."""
@@ -375,6 +380,7 @@ def test_timeliness_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Nulls/Completeness Checks (5 tests)
 # =============================================================================
+
 
 def test_nulls_checks(connection_id: str) -> TestResults:
     """Test all nulls/completeness checks."""
@@ -468,6 +474,7 @@ def test_nulls_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Uniqueness Checks (6 tests)
 # =============================================================================
+
 
 def test_uniqueness_checks(connection_id: str) -> TestResults:
     """Test all uniqueness checks."""
@@ -574,6 +581,7 @@ def test_uniqueness_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Numeric/Statistical Checks (8 tests)
 # =============================================================================
+
 
 def test_numeric_checks(connection_id: str) -> TestResults:
     """Test all numeric/statistical checks."""
@@ -712,6 +720,7 @@ def test_numeric_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Text Checks (9 tests)
 # =============================================================================
+
 
 def test_text_checks(connection_id: str) -> TestResults:
     """Test all text checks."""
@@ -866,6 +875,7 @@ def test_text_checks(connection_id: str) -> TestResults:
 # Pattern/Format Checks (12 tests)
 # =============================================================================
 
+
 def test_pattern_checks(connection_id: str) -> TestResults:
     """Test all pattern/format checks."""
     print_section("Pattern/Format Checks (12 tests)")
@@ -1003,7 +1013,9 @@ def test_pattern_checks(connection_id: str) -> TestResults:
                 "target_schema": "public",
                 "target_column": "phone",
                 "parameters": {},
-                "rule_parameters": {"error": {"max_count": 15}},  # ~11% invalid = ~2-3 phones, but regex may be stricter
+                "rule_parameters": {
+                    "error": {"max_count": 15}
+                },  # ~11% invalid = ~2-3 phones, but regex may be stricter
             },
             "expected_pass": True,
         },
@@ -1064,6 +1076,7 @@ def test_pattern_checks(connection_id: str) -> TestResults:
 # Geographic Checks (2 tests)
 # =============================================================================
 
+
 def test_geographic_checks(connection_id: str) -> TestResults:
     """Test all geographic checks."""
     print_section("Geographic Checks (2 tests)")
@@ -1111,6 +1124,7 @@ def test_geographic_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Boolean Checks (2 tests)
 # =============================================================================
+
 
 def test_boolean_checks(connection_id: str) -> TestResults:
     """Test all boolean checks."""
@@ -1160,6 +1174,7 @@ def test_boolean_checks(connection_id: str) -> TestResults:
 # DateTime Checks (2 tests)
 # =============================================================================
 
+
 def test_datetime_checks(connection_id: str) -> TestResults:
     """Test all datetime checks."""
     print_section("DateTime Checks (2 tests)")
@@ -1207,6 +1222,7 @@ def test_datetime_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Referential Integrity Checks (2 tests)
 # =============================================================================
+
 
 def test_referential_checks(connection_id: str) -> TestResults:
     """Test all referential integrity checks."""
@@ -1264,6 +1280,7 @@ def test_referential_checks(connection_id: str) -> TestResults:
 # Custom SQL Checks (2 tests)
 # =============================================================================
 
+
 def test_custom_sql_checks(connection_id: str) -> TestResults:
     """Test all custom SQL checks."""
     print_section("Custom SQL Checks (2 tests)")
@@ -1309,6 +1326,7 @@ def test_custom_sql_checks(connection_id: str) -> TestResults:
 # =============================================================================
 # Legacy Check Tests (for backward compatibility)
 # =============================================================================
+
 
 def test_legacy_checks(connection_id: str) -> TestResults:
     """Test legacy check types for backward compatibility."""
@@ -1403,6 +1421,7 @@ def test_legacy_checks(connection_id: str) -> TestResults:
 # Check Preview Tests
 # =============================================================================
 
+
 def test_check_preview(connection_id: str) -> TestResults:
     """Test check preview endpoint (dry run without saving)."""
     print_section("Check Preview Tests")
@@ -1462,6 +1481,7 @@ def test_check_preview(connection_id: str) -> TestResults:
 # Metadata Endpoint Tests
 # =============================================================================
 
+
 def test_metadata_endpoints() -> TestResults:
     """Test check metadata endpoints."""
     print_section("Metadata Endpoint Tests")
@@ -1513,6 +1533,7 @@ def test_metadata_endpoints() -> TestResults:
 # =============================================================================
 # Main Test Runner
 # =============================================================================
+
 
 def main() -> int:
     """Run all API tests."""

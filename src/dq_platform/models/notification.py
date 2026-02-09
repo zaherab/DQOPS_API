@@ -1,6 +1,9 @@
 """Notification channel model for webhook alerts."""
 
+from __future__ import annotations
+
 import enum
+from typing import Any
 
 from sqlalchemy import Enum, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -34,10 +37,10 @@ class NotificationChannel(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
 
     # Webhook config: {"url": "https://...", "headers": {"Authorization": "..."}}
-    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     # Which events trigger this channel: ["incident.opened", "incident.resolved"]
-    events: Mapped[list] = mapped_column(
+    events: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=lambda: ["incident.opened", "incident.resolved"]
     )
 

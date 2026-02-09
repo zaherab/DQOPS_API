@@ -19,27 +19,21 @@ celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-
     # Timezone
     timezone="UTC",
     enable_utc=True,
-
     # Task tracking
     task_track_started=True,
     task_time_limit=settings.check_execution_timeout,
     task_soft_time_limit=settings.check_execution_timeout - 30,
-
     # Reliability
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-
     # Concurrency
     worker_concurrency=settings.max_concurrent_checks,
     worker_prefetch_multiplier=1,
-
     # Result backend
     result_expires=3600,  # 1 hour
-
     # Beat schedule for processing scheduled checks
     beat_schedule={
         "process-scheduled-checks": {

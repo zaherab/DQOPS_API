@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +41,7 @@ class IncidentService:
         Returns:
             Created incident.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Map string severity to enum
         severity_map = {
@@ -99,7 +98,7 @@ class IncidentService:
         )
         existing = result.scalar_one_or_none()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if existing:
             # Update existing incident
@@ -151,7 +150,7 @@ class IncidentService:
 
         if incident:
             incident.status = IncidentStatus.RESOLVED
-            incident.resolved_at = datetime.now(timezone.utc)
+            incident.resolved_at = datetime.now(UTC)
             incident.resolved_by = resolved_by
             incident.resolution_notes = resolution_notes or "Check passed"
             await self.db.flush()
@@ -171,9 +170,7 @@ class IncidentService:
         Raises:
             NotFoundError: If incident not found.
         """
-        result = await self.db.execute(
-            select(Incident).where(Incident.id == incident_id)
-        )
+        result = await self.db.execute(select(Incident).where(Incident.id == incident_id))
         incident = result.scalar_one_or_none()
 
         if not incident:
@@ -181,7 +178,7 @@ class IncidentService:
 
         return incident
 
-    async def list(
+    async def list_incidents(
         self,
         offset: int = 0,
         limit: int = 100,
@@ -233,6 +230,7 @@ class IncidentService:
         """Dispatch webhook notifications (fire-and-forget, never raises)."""
         try:
             from dq_platform.services.notification_service import NotificationService
+
             notif_service = NotificationService(self.db)
             await notif_service.dispatch_event(event_type, incident)
         except Exception:
@@ -260,7 +258,7 @@ class IncidentService:
             ValidationError: If status transition is invalid.
         """
         incident = await self.get(incident_id)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Validate status transitions
         valid_transitions = {
@@ -270,9 +268,7 @@ class IncidentService:
         }
 
         if status not in valid_transitions.get(incident.status, []):
-            raise ValidationError(
-                f"Cannot transition from '{incident.status.value}' to '{status.value}'"
-            )
+            raise ValidationError(f"Cannot transition from '{incident.status.value}' to '{status.value}'")
 
         incident.status = status
 

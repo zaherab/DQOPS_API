@@ -1,6 +1,7 @@
 """Credential encryption using Fernet symmetric encryption."""
 
 import json
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -23,7 +24,7 @@ def get_fernet() -> Fernet:
     return Fernet(settings.encryption_key.encode())
 
 
-def encrypt_config(config: dict) -> dict:
+def encrypt_config(config: dict[str, Any]) -> dict[str, str]:
     """Encrypt sensitive fields in connection configuration.
 
     Encrypts the entire config dict as a JSON string and stores it
@@ -45,7 +46,7 @@ def encrypt_config(config: dict) -> dict:
     return {"encrypted_data": encrypted.decode()}
 
 
-def decrypt_config(encrypted_config: dict) -> dict:
+def decrypt_config(encrypted_config: dict[str, Any]) -> dict[str, Any]:
     """Decrypt connection configuration.
 
     Args:
@@ -68,7 +69,8 @@ def decrypt_config(encrypted_config: dict) -> dict:
     fernet = get_fernet()
     try:
         decrypted = fernet.decrypt(encrypted_data.encode())
-        return json.loads(decrypted.decode())
+        result: dict[str, Any] = json.loads(decrypted.decode())
+        return result
     except InvalidToken:
         raise ValueError("Failed to decrypt configuration - invalid encryption key")
 

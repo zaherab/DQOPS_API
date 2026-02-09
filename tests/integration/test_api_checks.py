@@ -64,7 +64,6 @@ if TYPE_CHECKING:
 
 from tests.integration.conftest import run_check_and_wait
 
-
 # =============================================================================
 # Test Data Constants
 # =============================================================================
@@ -160,15 +159,17 @@ class TestVolumeChecks:
         desc: str,
     ):
         """Test volume checks with various thresholds."""
-        check = await check_factory({
-            "name": f"pytest-volume-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-volume-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -468,16 +469,18 @@ class TestNullsChecks:
         target_column: str,
     ):
         """Test null/completeness checks."""
-        check = await check_factory({
-            "name": f"pytest-nulls-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-nulls-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -825,16 +828,18 @@ class TestNumericChecks:
         target_column: str,
     ):
         """Test numeric/statistical checks."""
-        check = await check_factory({
-            "name": f"pytest-numeric-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-numeric-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1009,16 +1014,18 @@ class TestTextChecks:
         target_column: str,
     ):
         """Test text checks."""
-        check = await check_factory({
-            "name": f"pytest-text-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-text-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1226,16 +1233,18 @@ class TestPatternChecks:
         target_column: str,
     ):
         """Test pattern/format checks."""
-        check = await check_factory({
-            "name": f"pytest-pattern-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-pattern-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1313,16 +1322,18 @@ class TestGeographicChecks:
         target_column: str,
     ):
         """Test geographic checks."""
-        check = await check_factory({
-            "name": f"pytest-geo-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-geo-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1400,16 +1411,18 @@ class TestBooleanChecks:
         target_column: str,
     ):
         """Test boolean checks."""
-        check = await check_factory({
-            "name": f"pytest-bool-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-bool-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1487,16 +1500,18 @@ class TestDateTimeChecks:
         target_column: str,
     ):
         """Test datetime checks."""
-        check = await check_factory({
-            "name": f"pytest-datetime-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-datetime-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1590,16 +1605,18 @@ class TestReferentialChecks:
         target_column: str,
     ):
         """Test referential integrity checks."""
-        check = await check_factory({
-            "name": f"pytest-ref-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-ref-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -1672,15 +1689,17 @@ class TestCustomSQLChecks:
         desc: str,
     ):
         """Test custom SQL checks."""
-        check = await check_factory({
-            "name": f"pytest-sql-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-sql-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2053,16 +2072,18 @@ class TestWhitespaceTextChecks:
         target_column: str,
     ):
         """Test whitespace and text checks."""
-        check = await check_factory({
-            "name": f"pytest-whitespace-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-whitespace-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2206,16 +2227,18 @@ class TestGeoNumericPercentChecks:
         target_column: str,
     ):
         """Test geographic and numeric percent checks."""
-        check = await check_factory({
-            "name": f"pytest-geonumeric-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-geonumeric-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2361,16 +2384,18 @@ class TestStatisticalChecks:
         target_column: str,
     ):
         """Test statistical and percentile checks."""
-        check = await check_factory({
-            "name": f"pytest-statistical-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-statistical-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2483,16 +2508,18 @@ class TestAcceptedValuesChecks:
         target_column: str,
     ):
         """Test accepted values and domain checks."""
-        check = await check_factory({
-            "name": f"pytest-accepted-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-accepted-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2583,16 +2610,18 @@ class TestDateDatatypeChecks:
         target_column: str,
     ):
         """Test date pattern and data type detection checks."""
-        check = await check_factory({
-            "name": f"pytest-datedt-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-datedt-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2694,16 +2723,18 @@ class TestPIIDetectionChecks:
         target_column: str,
     ):
         """Test PII detection checks."""
-        check = await check_factory({
-            "name": f"pytest-pii-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-pii-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -2805,16 +2836,18 @@ class TestChangeDetectionChecks:
         target_column: str,
     ):
         """Test change detection checks."""
-        check = await check_factory({
-            "name": f"pytest-change-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": target_column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-change-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": target_column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3014,15 +3047,17 @@ class TestTableLevelMiscChecks:
         desc: str,
     ):
         """Test table-level miscellaneous checks."""
-        check = await check_factory({
-            "name": f"pytest-tablemisc-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-tablemisc-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3099,16 +3134,18 @@ class TestTextLengthPercentChecks:
         desc: str,
     ):
         """Test text length percent checks."""
-        check = await check_factory({
-            "name": f"pytest-textlenpct-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-textlenpct-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3245,16 +3282,18 @@ class TestColumnCustomSQLChecks:
         desc: str,
     ):
         """Test column-level custom SQL checks."""
-        check = await check_factory({
-            "name": f"pytest-colsql-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "target_column": column,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-colsql-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "target_column": column,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3308,15 +3347,17 @@ class TestTableCustomSQLChecks:
         desc: str,
     ):
         """Test table-level custom SQL checks."""
-        check = await check_factory({
-            "name": f"pytest-tblsql-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-tblsql-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3406,15 +3447,17 @@ class TestSchemaDetectionChecks:
         desc: str,
     ):
         """Test schema detection checks."""
-        check = await check_factory({
-            "name": f"pytest-schema-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-schema-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 
@@ -3468,15 +3511,17 @@ class TestImportTableChecks:
         desc: str,
     ):
         """Test import external results table-level checks."""
-        check = await check_factory({
-            "name": f"pytest-import-{test_id}",
-            "check_type": check_type,
-            "check_mode": "monitoring",
-            "target_table": DEFAULT_TABLE,
-            "target_schema": DEFAULT_SCHEMA,
-            "parameters": params,
-            "rule_parameters": rule_params,
-        })
+        check = await check_factory(
+            {
+                "name": f"pytest-import-{test_id}",
+                "check_type": check_type,
+                "check_mode": "monitoring",
+                "target_table": DEFAULT_TABLE,
+                "target_schema": DEFAULT_SCHEMA,
+                "parameters": params,
+                "rule_parameters": rule_params,
+            }
+        )
 
         result = await run_check_and_wait(api_client, check["id"])
 

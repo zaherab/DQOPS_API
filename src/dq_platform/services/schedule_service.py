@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from croniter import croniter
 from sqlalchemy import select
@@ -88,9 +88,7 @@ class ScheduleService:
         Raises:
             NotFoundError: If schedule not found.
         """
-        result = await self.db.execute(
-            select(Schedule).where(Schedule.id == schedule_id)
-        )
+        result = await self.db.execute(select(Schedule).where(Schedule.id == schedule_id))
         schedule = result.scalar_one_or_none()
 
         if not schedule:
@@ -98,7 +96,7 @@ class ScheduleService:
 
         return schedule
 
-    async def list(
+    async def list_schedules(
         self,
         offset: int = 0,
         limit: int = 100,
@@ -178,9 +176,7 @@ class ScheduleService:
             schedule.is_active = is_active
 
         # Recalculate next run time
-        schedule.next_run_at = self._calculate_next_run(
-            schedule.cron_expression, schedule.timezone
-        )
+        schedule.next_run_at = self._calculate_next_run(schedule.cron_expression, schedule.timezone)
 
         await self.db.flush()
         return schedule
@@ -201,7 +197,7 @@ class ScheduleService:
         Returns:
             List of schedules with next_run_at <= now.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         result = await self.db.execute(
             select(Schedule).where(
@@ -222,10 +218,8 @@ class ScheduleService:
         """
         schedule = await self.get(schedule_id)
 
-        schedule.last_run_at = datetime.now(timezone.utc)
-        schedule.next_run_at = self._calculate_next_run(
-            schedule.cron_expression, schedule.timezone
-        )
+        schedule.last_run_at = datetime.now(UTC)
+        schedule.next_run_at = self._calculate_next_run(schedule.cron_expression, schedule.timezone)
 
         await self.db.flush()
         return schedule
@@ -257,5 +251,6 @@ class ScheduleService:
         """
         # For simplicity, calculate based on UTC
         # In production, you'd want proper timezone handling
-        cron = croniter(expression, datetime.now(timezone.utc))
-        return cron.get_next(datetime)
+        cron = croniter(expression, datetime.now(UTC))
+        next_run: datetime = cron.get_next(datetime)
+        return next_run

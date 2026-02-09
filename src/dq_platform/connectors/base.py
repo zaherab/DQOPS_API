@@ -69,12 +69,12 @@ class BaseConnector(ABC):
         pass
 
     @abstractmethod
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         """Execute a SQL query and return results.
 
         Args:
             sql: SQL query to execute.
-            params: Optional query parameters.
+            params: Optional query parameters (dict or tuple).
 
         Returns:
             List of result rows as dictionaries.
@@ -114,6 +114,7 @@ class BaseConnector(ABC):
             List of result rows as dictionaries.
         """
         import asyncio
+
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self.execute, sql, params)
 
@@ -123,6 +124,7 @@ class BaseConnector(ABC):
         Default implementation calls sync connect in a thread.
         """
         import asyncio
+
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self.connect)
 
@@ -132,6 +134,7 @@ class BaseConnector(ABC):
         Default implementation calls sync disconnect in a thread.
         """
         import asyncio
+
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, self.disconnect)
 

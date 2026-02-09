@@ -48,7 +48,7 @@ class SQLServerConnector(BaseConnector):
             finally:
                 self._connection = None
 
-    def execute(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def execute(self, sql: str, params: dict[str, Any] | tuple[Any, ...] | None = None) -> list[dict[str, Any]]:
         """Execute a SQL query and return results."""
         if not self._connection:
             raise ExecutionError("Not connected to database")
@@ -56,7 +56,10 @@ class SQLServerConnector(BaseConnector):
         try:
             cursor = self._connection.cursor()
             if params:
-                cursor.execute(sql, list(params.values()))
+                if isinstance(params, dict):
+                    cursor.execute(sql, list(params.values()))
+                else:
+                    cursor.execute(sql, params)
             else:
                 cursor.execute(sql)
 

@@ -1,24 +1,24 @@
 """Celery tasks for background job execution."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dq_platform.checks import Severity
-from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check as get_dqops_check
-from dq_platform.checks.dqops_executor import DQOpsExecutor, run_dqops_check
+from dq_platform.checks.dqops_checks import DQOpsCheckType
+from dq_platform.checks.dqops_checks import get_check as get_dqops_check
+from dq_platform.checks.dqops_executor import CheckExecutionResult, DQOpsExecutor, run_dqops_check
 from dq_platform.checks.gx_executor import run_gx_check
 from dq_platform.checks.rules import RuleType, evaluate_rule
 from dq_platform.checks.sensors import get_sensor
 from dq_platform.config import get_settings
-from dq_platform.core.encryption import decrypt_config
 from dq_platform.models.check import Check
 from dq_platform.models.incident import Incident, IncidentStatus
 from dq_platform.models.job import Job, JobStatus
 from dq_platform.models.result import CheckResult
-from dq_platform.services.check_service import CheckService
 from dq_platform.services.connection_service import ConnectionService
 from dq_platform.services.incident_service import IncidentService
 from dq_platform.services.result_service import ResultService
@@ -26,7 +26,7 @@ from dq_platform.services.schedule_service import ScheduleService
 from dq_platform.workers.celery_app import celery_app
 
 
-def _create_task_session_factory():
+def _create_task_session_factory() -> async_sessionmaker[AsyncSession]:
     """Create a fresh async session factory for task execution.
 
     This avoids connection pool conflicts when running async code
@@ -46,8 +46,8 @@ def _create_task_session_factory():
     )
 
 
-@celery_app.task(bind=True, max_retries=3)
-def execute_check(self, job_id: str) -> dict:
+@celery_app.task(bind=True, max_retries=3)  # type: ignore[untyped-decorator]
+def execute_check(self: Any, job_id: str) -> dict[str, Any]:
     """Execute a data quality check.
 
     Args:
@@ -57,27 +57,24 @@ def execute_check(self, job_id: str) -> dict:
         Execution result.
     """
     import asyncio
+
     return asyncio.run(_execute_check_async(self, job_id))
 
 
-async def _execute_check_async(task, job_id: str) -> dict:
+async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
     """Async implementation of check execution."""
     # Create a fresh session factory for this task execution
     session_factory = _create_task_session_factory()
     async with session_factory() as db:
         # Get job
-        result = await db.execute(
-            select(Job).where(Job.id == job_id)
-        )
+        result = await db.execute(select(Job).where(Job.id == job_id))
         job = result.scalar_one_or_none()
 
         if not job:
             return {"status": "failed", "error": f"Job {job_id} not found"}
 
         # Get check
-        result = await db.execute(
-            select(Check).where(Check.id == job.check_id)
-        )
+        result = await db.execute(select(Check).where(Check.id == job.check_id))
         check = result.scalar_one_or_none()
 
         if not check:
@@ -88,15 +85,15 @@ async def _execute_check_async(task, job_id: str) -> dict:
 
         # Update job status
         job.status = JobStatus.RUNNING
-        job.started_at = datetime.now(timezone.utc)
+        job.started_at = datetime.now(UTC)
         await db.commit()
 
         try:
             # Get connection config (includes type for connector factory)
-            connection_config = check.connection.decrypted_config
+            connection_config = check.connection.decrypted_config  # type: ignore[attr-defined]
 
             # Execute check
-            execution_result = await _run_check_execution(db, check, connection_config)
+            execution_result = await _run_check_execution(db, check, connection_config)  # type: ignore[arg-type]
 
             # Record result
             result_service = ResultService(db)
@@ -114,11 +111,11 @@ async def _execute_check_async(task, job_id: str) -> dict:
 
             # Create/update incident if failed
             if not execution_result["passed"]:
-                await _handle_failure(db, check, check_result, execution_result)
+                await _handle_failure(db, check, check_result, execution_result)  # type: ignore[arg-type]
 
             # Update job status
             job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             return {
@@ -132,13 +129,14 @@ async def _execute_check_async(task, job_id: str) -> dict:
 
         except Exception as exc:
             import traceback
+
             tb = traceback.format_exc()
             print(f"Task error: {exc}\n{tb}")
 
             # Update job status
             job.status = JobStatus.FAILED
             job.error_message = f"{exc}\n{tb}"
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             # Retry logic
@@ -155,8 +153,8 @@ async def _execute_check_async(task, job_id: str) -> dict:
 async def _run_check_execution(
     db: AsyncSession,
     check: Check,
-    connection_config: dict,
-) -> dict:
+    connection_config: dict[str, Any],
+) -> dict[str, Any]:
     """Run check execution using DQOps or Great Expectations.
 
     Args:
@@ -167,7 +165,7 @@ async def _run_check_execution(
     Returns:
         Execution result dictionary.
     """
-    executed_at = datetime.now(timezone.utc)
+    executed_at = datetime.now(UTC)
 
     # Try DQOps-style execution first
     try:
@@ -188,8 +186,8 @@ async def _run_check_execution(
 
         # Anomaly: inject historical values
         if dqops_check_def.rule_type == RuleType.ANOMALY_PERCENTILE:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=90)
-            result = await db.execute(
+            cutoff = datetime.now(UTC) - timedelta(days=90)
+            hist_result = await db.execute(
                 select(CheckResult.actual_value)
                 .where(
                     CheckResult.check_id == check.id,
@@ -199,7 +197,7 @@ async def _run_check_execution(
                 .order_by(CheckResult.executed_at.desc())
                 .limit(1000)
             )
-            rule_params["_historical_values"] = [row[0] for row in result.all()]
+            rule_params["_historical_values"] = [row[0] for row in hist_result.all()]
 
         # Cross-source: dual-connection execution (early return)
         if "reference_connection_id" in (check.parameters or {}):
@@ -208,7 +206,7 @@ async def _run_check_execution(
             )
 
         # Execute DQOps check
-        result = await run_dqops_check(
+        result: CheckExecutionResult = await run_dqops_check(
             check_type=dqops_check_type,
             connection_config=connection_config,
             schema_name=check.target_schema or "public",
@@ -272,11 +270,11 @@ async def _run_check_execution(
 async def _run_cross_source_execution(
     db: AsyncSession,
     check: Check,
-    connection_config: dict,
-    dqops_check_def,
-    rule_params: dict,
+    connection_config: dict[str, Any],
+    dqops_check_def: Any,
+    rule_params: dict[str, Any],
     executed_at: datetime,
-) -> dict:
+) -> dict[str, Any]:
     """Run cross-source comparison in the Celery worker path.
 
     Args:
@@ -342,11 +340,7 @@ async def _run_cross_source_execution(
     elif max(abs(source_value), abs(ref_value)) == 0:
         match_percent = 0.0
     else:
-        match_percent = (
-            min(abs(source_value), abs(ref_value))
-            / max(abs(source_value), abs(ref_value))
-            * 100.0
-        )
+        match_percent = min(abs(source_value), abs(ref_value)) / max(abs(source_value), abs(ref_value)) * 100.0
 
     rule_result = evaluate_rule(dqops_check_def.rule_type, match_percent, rule_params)
 
@@ -363,10 +357,10 @@ async def _run_cross_source_execution(
 
 
 async def _handle_failure(
-    db,
+    db: AsyncSession,
     check: Check,
     check_result: CheckResult,
-    execution_result: dict,
+    execution_result: dict[str, Any],
 ) -> None:
     """Handle check failure by creating or updating incident.
 
@@ -380,6 +374,7 @@ async def _handle_failure(
 
     # Check for existing open incident for this check
     from sqlalchemy import select
+
     result = await db.execute(
         select(Incident).where(
             Incident.check_id == check.id,
@@ -404,8 +399,8 @@ async def _handle_failure(
         )
 
 
-@celery_app.task
-def process_scheduled_checks() -> dict:
+@celery_app.task  # type: ignore[untyped-decorator]
+def process_scheduled_checks() -> dict[str, Any]:
     """Poll for due schedules and dispatch check execution jobs.
 
     Called by Celery Beat every 60 seconds. Finds schedules whose
@@ -413,10 +408,11 @@ def process_scheduled_checks() -> dict:
     execute_check, and updates the schedule's next run time.
     """
     import asyncio
+
     return asyncio.run(_process_scheduled_checks_async())
 
 
-async def _process_scheduled_checks_async() -> dict:
+async def _process_scheduled_checks_async() -> dict[str, Any]:
     """Async implementation of schedule processing."""
     session_factory = _create_task_session_factory()
     async with session_factory() as db:

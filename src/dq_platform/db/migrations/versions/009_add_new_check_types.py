@@ -16,15 +16,16 @@ Adds 82 new check types:
 - Phase 9: Table-Level Misc (5)
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "009_add_new_check_types"
-down_revision: Union[str, None] = "008_add_result_severity_column"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "008_add_result_severity_column"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # All 82 new check types to add
 NEW_CHECK_TYPES = [
@@ -39,7 +40,6 @@ NEW_CHECK_TYPES = [
     "text_matching_regex_percent",
     "min_word_count",
     "max_word_count",
-
     # Phase 2: Geographic & Numeric percent variants
     "valid_latitude_percent",
     "valid_longitude_percent",
@@ -49,7 +49,6 @@ NEW_CHECK_TYPES = [
     "negative_values_percent",
     "non_negative_values",
     "non_negative_values_percent",
-
     # Phase 3: Statistical & Percentile checks
     "integer_in_range_percent",
     "sample_stddev_in_range",
@@ -61,7 +60,6 @@ NEW_CHECK_TYPES = [
     "percentile_25_in_range",
     "percentile_75_in_range",
     "percentile_90_in_range",
-
     # Phase 4: Accepted Values & Domain checks
     "text_found_in_set_percent",
     "number_found_in_set_percent",
@@ -70,7 +68,6 @@ NEW_CHECK_TYPES = [
     "expected_texts_in_top_values_count",
     "text_valid_country_code_percent",
     "text_valid_currency_code_percent",
-
     # Phase 5: Date Pattern & Data Type detection
     "text_not_matching_date_pattern_found",
     "text_not_matching_date_pattern_percent",
@@ -82,14 +79,12 @@ NEW_CHECK_TYPES = [
     "text_parsable_to_date_percent",
     "detected_datatype_in_text",
     "detected_datatype_in_text_changed",
-
     # Phase 6: PII Detection checks
     "contains_usa_phone_percent",
     "contains_email_percent",
     "contains_usa_zipcode_percent",
     "contains_ip4_percent",
     "contains_ip6_percent",
-
     # Phase 7: Change Detection checks - Nulls
     "nulls_percent_change_1_day",
     "nulls_percent_change_7_days",
@@ -111,7 +106,6 @@ NEW_CHECK_TYPES = [
     "sum_change_1_day",
     "sum_change_7_days",
     "sum_change_30_days",
-
     # Phase 8: Cross-Table Comparison
     "total_row_count_match_percent",
     "total_sum_match_percent",
@@ -119,13 +113,11 @@ NEW_CHECK_TYPES = [
     "total_max_match_percent",
     "total_average_match_percent",
     "total_not_null_count_match_percent",
-
     # Phase 9: Table-Level Misc
     "data_ingestion_delay",
     "reload_lag",
     "sql_condition_passed_percent_on_table",
     "column_type_changed",
-
     # Additional missing types
     "nulls_count",
     "nulls_percent",

@@ -3,14 +3,14 @@
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import great_expectations as gx
 from great_expectations.core import ExpectationSuite
 from great_expectations.datasource.fluent import SQLDatasource
 
-from dq_platform.checks.gx_registry import build_expectation, is_column_level_check
+from dq_platform.checks.gx_registry import build_expectation
 from dq_platform.core.encryption import decrypt_config
 from dq_platform.models.check import Check, CheckType
 from dq_platform.models.connection import Connection, ConnectionType
@@ -87,7 +87,7 @@ class GXCheckExecutor:
             ExecutionResult with check outcome.
         """
         start_time = time.time()
-        executed_at = datetime.now(timezone.utc)
+        executed_at = datetime.now(UTC)
 
         try:
             # Decrypt connection config
@@ -251,9 +251,7 @@ class GXCheckExecutor:
             schema = config.get("schema", "PUBLIC")
             role = config.get("role", "")
 
-            conn_str = (
-                f"snowflake://{user}:{password}@{account}/{database}/{schema}"
-            )
+            conn_str = f"snowflake://{user}:{password}@{account}/{database}/{schema}"
             params = []
             if warehouse:
                 params.append(f"warehouse={warehouse}")
@@ -314,7 +312,9 @@ class GXCheckExecutor:
 
             # Build result details
             result_details = {
-                "expectation_type": exp_result.expectation_config.type if hasattr(exp_result, "expectation_config") else check.check_type.value,
+                "expectation_type": exp_result.expectation_config.type
+                if hasattr(exp_result, "expectation_config")
+                else check.check_type.value,
                 "success": exp_result.success if hasattr(exp_result, "success") else passed,
                 "gx_result": result_dict,
             }

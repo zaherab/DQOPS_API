@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import AsyncGenerator, Generator
-from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -16,7 +15,6 @@ from dq_platform.config import Settings, get_settings
 from dq_platform.db.session import get_db
 from dq_platform.main import app
 from dq_platform.models.base import Base
-
 
 # Test database URL (in-memory SQLite for tests)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
