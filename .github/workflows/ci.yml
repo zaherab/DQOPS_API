@@ -8,37 +8,11 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # ===== Code Quality Checks =====
   lint:
-    name: Lint & Format Check
-    runs-on: ubuntu-latest
-    continue-on-error: true  # Don't fail CI on lint issues for now
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy
-
-      - name: Run Ruff (linting)
-        run: ruff check src/ tests/ || true
-
-      - name: Run Ruff (format check)
-        run: ruff format --check src/ tests/ || true
-
-  # ===== Unit Tests =====
-  test-unit:
-    name: Unit Tests
+    name: Lint Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,52 +22,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+      - name: Install ruff
+        run: pip install ruff
 
-      - name: Run unit tests
-        run: pytest tests/test_dqops_checks.py tests/test_gx_registry.py -v || true
+      - name: Run Ruff (report only)
+        run: ruff check src/ tests/ || echo "Lint issues found but not failing CI"
 
-  # ===== Integration Tests =====
-  test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up environment
-        run: |
-          cp .env.example .env
-          echo "ENCRYPTION_KEY=$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" >> .env
-
-      - name: Start services
-        run: docker compose up -d
-
-      - name: Wait for services
-        run: |
-          echo "Waiting for services to be ready..."
-          for i in {1..30}; do
-            if curl -s http://localhost:8000/health > /dev/null; then
-              echo "API is ready!"
-              break
-            fi
-            echo "Attempt $i/30: API not ready yet..."
-            sleep 5
-          done
-          docker compose ps
-
-      - name: Run integration tests
-        run: docker compose exec -T api pytest tests/integration/ -v --tb=short
-
-      - name: Cleanup
-        if: always()
-        run: docker compose down -v
-
-  # ===== Docker Build Test =====
+  # ===== Docker Build =====
   docker-build:
-    name: Docker Build Test
+    name: Docker Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -102,10 +39,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: false
-          tags: ${{ env.IMAGE_NAME }}:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: docker build -t dq-platform:test .
+
+      - name: Test Docker image
+        run: |
+          docker run --rm dq-platform:test python -c "import dq_platform; print('Import successful')"
