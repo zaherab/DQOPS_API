@@ -23,7 +23,7 @@ def upgrade() -> None:
     # Create enum types
     op.execute("CREATE TYPE connection_type AS ENUM ('postgresql', 'mysql', 'sqlserver', 'bigquery', 'snowflake')")
     op.execute(
-        "CREATE TYPE check_type AS ENUM ('row_count', 'row_count_min', 'row_count_max', 'schema_column_count', 'schema_column_exists', 'table_availability', 'data_freshness', 'null_count', 'null_percent', 'not_null', 'distinct_count', 'duplicate_count', 'unique', 'custom_sql')"
+        "CREATE TYPE check_type AS ENUM ('row_count', 'row_count_min', 'row_count_max', 'schema_column_count', 'schema_column_exists', 'table_availability', 'data_freshness', 'null_count', 'null_percent', 'not_null', 'distinct_count', 'duplicate_count', 'unique', 'custom_sql')"  # noqa: E501
     )
     op.execute("CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed', 'cancelled')")
     op.execute("CREATE TYPE incident_status AS ENUM ('open', 'acknowledged', 'resolved')")

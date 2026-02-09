@@ -1980,7 +1980,7 @@ INVALID_EMAIL_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'
+WHERE {{ column_name }}::TEXT !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -1996,7 +1996,7 @@ INVALID_UUID_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+WHERE {{ column_name }}::TEXT !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -2012,7 +2012,7 @@ INVALID_IP4_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+WHERE {{ column_name }}::TEXT !~ '^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -2028,7 +2028,7 @@ INVALID_IP6_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$'
+WHERE {{ column_name }}::TEXT !~ '^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -2044,7 +2044,7 @@ INVALID_PHONE_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^\\+?1?[-.]?\\(?[0-9]{3}\\)?[-.]?[0-9]{3}[-.]?[0-9]{4}$'
+WHERE {{ column_name }}::TEXT !~ '^\\+?1?[-.]?\\(?[0-9]{3}\\)?[-.]?[0-9]{3}[-.]?[0-9]{4}$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -2060,7 +2060,7 @@ INVALID_ZIPCODE_FORMAT_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT !~ '^[0-9]{5}(-[0-9]{4})?$'
+WHERE {{ column_name }}::TEXT !~ '^[0-9]{5}(-[0-9]{4})?$'  # noqa: E501
   AND {{ column_name }} IS NOT NULL
   AND {{ column_name }}::TEXT != ''
 {% if partition_filter %}
@@ -2350,7 +2350,7 @@ SELECT
     CASE 
         WHEN COUNT(*) = 0 THEN 0.0
         ELSE (SUM(CASE 
-            WHEN {{ column_name }}::TEXT !~ '^[A-Za-z]+([ ''-][A-Za-z]+)*$' 
+            WHEN {{ column_name }}::TEXT !~ '^[A-Za-z]+([ ''-][A-Za-z]+)*$'   # noqa: E501
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -2447,10 +2447,10 @@ DETECTED_DATATYPE_SENSOR = Sensor(
 SELECT 
     CASE 
         WHEN COUNT(*) = 0 THEN 5
-        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 1
-        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+(\\.[0-9]+)?$' OR {{ column_name }}::TEXT ~ '^-?[0-9]*\\.[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 2
-        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 3
-        WHEN (SUM(CASE WHEN UPPER({{ column_name }}::TEXT) IN ('TRUE','FALSE','YES','NO','1','0') THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 4
+        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 1  # noqa: E501
+        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+(\\.[0-9]+)?$' OR {{ column_name }}::TEXT ~ '^-?[0-9]*\\.[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 2  # noqa: E501
+        WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 3  # noqa: E501
+        WHEN (SUM(CASE WHEN UPPER({{ column_name }}::TEXT) IN ('TRUE','FALSE','YES','NO','1','0') THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 4  # noqa: E501
         ELSE 5
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -2469,10 +2469,10 @@ WITH current_type AS (
     SELECT 
         CASE 
             WHEN COUNT(*) = 0 THEN 5
-            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 1
-            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+(\\.[0-9]+)?$' OR {{ column_name }}::TEXT ~ '^-?[0-9]*\\.[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 2
-            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 3
-            WHEN (SUM(CASE WHEN UPPER({{ column_name }}::TEXT) IN ('TRUE','FALSE','YES','NO','1','0') THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 4
+            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 1  # noqa: E501
+            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^-?[0-9]+(\\.[0-9]+)?$' OR {{ column_name }}::TEXT ~ '^-?[0-9]*\\.[0-9]+$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 2  # noqa: E501
+            WHEN (SUM(CASE WHEN {{ column_name }}::TEXT ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 3  # noqa: E501
+            WHEN (SUM(CASE WHEN UPPER({{ column_name }}::TEXT) IN ('TRUE','FALSE','YES','NO','1','0') THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100 >= 95 THEN 4  # noqa: E501
             ELSE 5
         END as type_code
     FROM {{ schema_name }}.{{ table_name }}
