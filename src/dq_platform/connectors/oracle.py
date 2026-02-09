@@ -13,11 +13,11 @@ class OracleConnector(BaseConnector):
         try:
             import oracledb
 
-            service_name = self.config.get("service_name")
+            service_name: str = self.config.get("service_name") or "XEPDB1"
             dsn = oracledb.makedsn(
                 host=self.config.get("host", "localhost"),
                 port=int(self.config.get("port", 1521)),
-                service_name=str(service_name) if service_name is not None else None,
+                service_name=service_name,
             )
             self._connection = oracledb.connect(
                 user=self.config.get("user"),
