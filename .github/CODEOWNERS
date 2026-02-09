@@ -1,19 +1,7 @@
-# Global owners
-* @BaraaZ95
+# Code Owners
+# Add code owners here when you have a team
+# Format: pattern @username
 
-# Core code
-/src/dq_platform/core/ @BaraaZ95
-/src/dq_platform/checks/ @BaraaZ95
-/src/dq_platform/api/ @BaraaZ95
-
-# Connectors
-/src/dq_platform/connectors/ @BaraaZ95
-
-# Documentation
-/docs/ @BaraaZ95
-*.md @BaraaZ95
-
-# CI/CD
-/.github/ @BaraaZ95
-/Dockerfile @BaraaZ95
-/docker-compose.yml @BaraaZ95
+# Example:
+# * @maintainer1 @maintainer2
+# /src/security/ @security-team
