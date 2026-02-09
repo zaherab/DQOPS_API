@@ -1,0 +1,104 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: zaherab/dqops_api
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Staging (Docker Compose)
+        run: |
+          echo "Deploying to staging environment..."
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          
+          # For now, this is a placeholder. To enable actual deployment:
+          # 1. Add SSH_PRIVATE_KEY secret for your staging server
+          # 2. Add STAGING_HOST and STAGING_USER secrets
+          # 3. Uncomment and configure the SSH commands below:
+          
+          # Example SSH deployment (requires SSH_PRIVATE_KEY secret):
+          # echo "${{ secrets.SSH_PRIVATE_KEY }}" | ssh-add -
+          # ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+          #   cd /opt/dq-platform
+          #   docker compose pull
+          #   docker compose up -d
+          # EOF
+          
+          echo "Deployment steps configured. Add SSH secrets to enable auto-deployment."
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production (Docker Compose)
+        run: |
+          echo "Deploying to production environment..."
+          echo "Version: ${{ github.ref_name }}"
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}"
+          
+          # For now, this is a placeholder. To enable actual deployment:
+          # 1. Add SSH_PRIVATE_KEY secret for your production server
+          # 2. Add PRODUCTION_HOST and PRODUCTION_USER secrets
+          # 3. Uncomment and configure the SSH commands below:
+          
+          # Example SSH deployment (requires SSH_PRIVATE_KEY secret):
+          # echo "${{ secrets.SSH_PRIVATE_KEY }}" | ssh-add -
+          # ssh -o StrictHostKeyChecking=no ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+          #   cd /opt/dq-platform
+          #   docker compose pull
+          #   docker compose up -d
+          # EOF
+          
+          echo "Deployment steps configured. Add SSH secrets to enable auto-deployment."
+
+  notify:
+    name: Notify
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify deployment status
+        run: |
+          echo "Deployment status: ${{ needs.deploy-staging.result || needs.deploy-production.result }}"
+          
+          # To add Slack/Discord notifications:
+          # 1. Add webhook URL as a secret (SLACK_WEBHOOK or DISCORD_WEBHOOK)
+          # 2. Uncomment below:
+          
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"DQ Platform deployed: ${{ needs.deploy-staging.result || needs.deploy-production.result }}"}' \
+          #   ${{ secrets.SLACK_WEBHOOK }}

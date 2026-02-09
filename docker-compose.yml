@@ -1,0 +1,139 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: dq-platform-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dq_platform
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dq-platform-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: dq-platform-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dq-platform-network
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dq-platform-migrate
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - dq-platform-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dq-platform-api
+    command: uvicorn dq_platform.main:app --host 0.0.0.0 --port 8000 --workers 4
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dq-platform-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dq-platform-worker
+    command: celery -A dq_platform.workers.celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - dq-platform-network
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dq-platform-beat
+    command: celery -A dq_platform.workers.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - dq-platform-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  dq-platform-network:
+    driver: bridge

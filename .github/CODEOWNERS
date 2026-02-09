@@ -1,0 +1,19 @@
+# Global owners
+* @BaraaZ95
+
+# Core code
+/src/dq_platform/core/ @BaraaZ95
+/src/dq_platform/checks/ @BaraaZ95
+/src/dq_platform/api/ @BaraaZ95
+
+# Connectors
+/src/dq_platform/connectors/ @BaraaZ95
+
+# Documentation
+/docs/ @BaraaZ95
+*.md @BaraaZ95
+
+# CI/CD
+/.github/ @BaraaZ95
+/Dockerfile @BaraaZ95
+/docker-compose.yml @BaraaZ95
