@@ -46,6 +46,10 @@ dependencies = [
 
     # Scheduling
     "croniter>=2.0.0",
+
+    # Production hardening
+    "slowapi>=0.1.9",
+    "python-json-logger>=2.0.7",
 ]
 
 [project.optional-dependencies]
