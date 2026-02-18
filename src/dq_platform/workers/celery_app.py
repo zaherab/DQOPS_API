@@ -1,5 +1,7 @@
 """Celery application configuration."""
 
+from typing import Any
+
 from celery import Celery
 
 from dq_platform.config import get_settings
@@ -34,11 +36,26 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     # Result backend
     result_expires=3600,  # 1 hour
-    # Beat schedule for processing scheduled checks
+    # Beat schedule for periodic tasks
     beat_schedule={
         "process-scheduled-checks": {
             "task": "dq_platform.workers.tasks.process_scheduled_checks",
             "schedule": 60.0,  # Every 60 seconds
         },
+        "cleanup-stuck-jobs": {
+            "task": "dq_platform.workers.tasks.cleanup_stuck_jobs",
+            "schedule": 300.0,  # Every 5 minutes
+        },
     },
 )
+
+
+# Run recovery task on worker startup
+@celery_app.on_after_configure.connect
+def setup_periodic_tasks(sender: Celery, **kwargs: Any) -> None:
+    """Set up periodic tasks and run startup recovery."""
+    # Import here to avoid circular imports
+    from dq_platform.workers.tasks import recover_orphaned_jobs
+
+    # Run orphaned job recovery on startup
+    recover_orphaned_jobs.delay()

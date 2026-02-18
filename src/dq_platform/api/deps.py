@@ -9,6 +9,7 @@ from dq_platform.core.security import verify_api_key
 from dq_platform.db.session import get_db as get_db
 from dq_platform.services.check_service import CheckService
 from dq_platform.services.connection_service import ConnectionService
+from dq_platform.services.dimension_service import DimensionService
 from dq_platform.services.execution_service import ExecutionService
 from dq_platform.services.incident_service import IncidentService
 from dq_platform.services.notification_service import NotificationService
@@ -55,6 +56,11 @@ async def get_notification_service(db: DBSession) -> NotificationService:
     return NotificationService(db)
 
 
+async def get_dimension_service(db: DBSession) -> DimensionService:
+    """Get DimensionService instance."""
+    return DimensionService(db)
+
+
 # Typed service dependencies
 ConnectionServiceDep = Annotated[ConnectionService, Depends(get_connection_service)]
 CheckServiceDep = Annotated[CheckService, Depends(get_check_service)]
@@ -63,3 +69,4 @@ ResultServiceDep = Annotated[ResultService, Depends(get_result_service)]
 IncidentServiceDep = Annotated[IncidentService, Depends(get_incident_service)]
 ScheduleServiceDep = Annotated[ScheduleService, Depends(get_schedule_service)]
 NotificationServiceDep = Annotated[NotificationService, Depends(get_notification_service)]
+DimensionServiceDep = Annotated[DimensionService, Depends(get_dimension_service)]

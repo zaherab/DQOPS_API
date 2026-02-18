@@ -9,6 +9,7 @@ from typing import Any
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -34,8 +35,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     setup_logging()
     logger.info("Application starting up", extra={"version": "0.1.0"})
+    app.state.redis = redis.from_url(settings.redis_url)
     yield
     # Shutdown
+    await app.state.redis.close()
     logger.info("Application shutting down")
 
 
@@ -56,9 +59,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Middleware to generate and attach request ID to each request."""
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """Generate request ID, store in context, and add to response header."""
         # Generate unique request ID
         request_id = str(uuid.uuid4())
@@ -81,9 +82,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Middleware to add security headers to all responses."""
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         """Add security headers to response."""
         response = await call_next(request)
 
@@ -97,9 +96,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
 
         # Enforce HTTPS
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
         # Prevent caching of API responses
         response.headers["Cache-Control"] = "no-store"
@@ -129,21 +126,19 @@ app.include_router(api_router, prefix=settings.api_prefix)
 
 @app.get("/health")
 @limiter.limit("10/minute")  # Lower rate limit for health checks
-async def health_check(request: Request) -> dict[str, Any]:
+async def health_check(request: Request) -> Response:
     """Deep health check endpoint verifying DB and Redis connectivity.
 
     Returns 503 if any dependency is down so load balancers stop routing.
     """
-    health_status = {
+    health_status: dict[str, Any] = {
         "status": "healthy",
         "version": "0.1.0",
         "db": "ok",
         "redis": "ok",
     }
-    status_code = 200
-    is_healthy = True
 
-    # Check database connectivity
+    # Check database connectivity (reuses connection pool)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -151,20 +146,14 @@ async def health_check(request: Request) -> dict[str, Any]:
         logger.error(f"Health check DB failure: {e}")
         health_status["db"] = "error"
         health_status["status"] = "unhealthy"
-        is_healthy = False
 
-    # Check Redis connectivity
+    # Check Redis connectivity (reuses shared client)
     try:
-        redis_client = redis.from_url(settings.redis_url)
-        await redis_client.ping()
-        await redis_client.close()
+        await request.app.state.redis.ping()
     except Exception as e:
         logger.error(f"Health check Redis failure: {e}")
         health_status["redis"] = "error"
         health_status["status"] = "unhealthy"
-        is_healthy = False
 
-    if not is_healthy:
-        status_code = 503
-
-    return health_status
+    status_code = 200 if health_status["status"] == "healthy" else 503
+    return JSONResponse(content=health_status, status_code=status_code)

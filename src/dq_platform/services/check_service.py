@@ -130,21 +130,20 @@ class CheckService:
         await self.db.commit()
         return check
 
-    async def get_check(self, check_id: UUID) -> Check | None:
+    async def get_check(self, check_id: UUID, *, include_inactive: bool = False) -> Check | None:
         """Get a check by ID.
 
         Args:
             check_id: Check UUID.
+            include_inactive: If True, return check even if is_active=False.
 
         Returns:
             Check instance or None if not found.
         """
-        result = await self.db.execute(
-            select(Check).where(
-                Check.id == check_id,
-                Check.is_active == True,  # noqa: E712
-            )
-        )
+        query = select(Check).where(Check.id == check_id)
+        if not include_inactive:
+            query = query.where(Check.is_active == True)  # noqa: E712
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def list_checks(
@@ -239,7 +238,7 @@ class CheckService:
         Returns:
             Updated check or None if not found.
         """
-        check = await self.get_check(check_id)
+        check = await self.get_check(check_id, include_inactive=True)
         if not check:
             return None
 
@@ -264,7 +263,8 @@ class CheckService:
         if rule_parameters is not None:
             check.rule_parameters = rule_parameters
 
-        await self.db.flush()
+        await self.db.commit()
+        await self.db.refresh(check)
         return check
 
     async def delete_check(self, check_id: UUID) -> bool:
@@ -281,7 +281,7 @@ class CheckService:
             return False
 
         check.is_active = False
-        await self.db.flush()
+        await self.db.commit()
         return True
 
     async def preview_check(self, check_id: UUID) -> PreviewResult:

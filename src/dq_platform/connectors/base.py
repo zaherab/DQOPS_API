@@ -51,8 +51,25 @@ class BaseConnector(ABC):
         Args:
             config: Connection configuration (host, port, database, user, password, etc.)
         """
-        self.config = config
+        self.config = self._normalize_config(config)
         self._connection: Any = None
+
+    @staticmethod
+    def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
+        """Normalize config key aliases to canonical names."""
+        aliases: dict[str, str] = {
+            "username": "user",
+            "hostname": "host",
+            "dbname": "database",
+            "db": "database",
+        }
+        normalized = dict(config)
+        for alias, canonical in aliases.items():
+            if alias in normalized and canonical not in normalized:
+                normalized[canonical] = normalized.pop(alias)
+            elif alias in normalized and canonical in normalized:
+                normalized.pop(alias)  # canonical takes precedence
+        return normalized
 
     @abstractmethod
     def connect(self) -> None:

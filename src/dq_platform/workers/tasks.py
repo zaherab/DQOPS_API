@@ -46,7 +46,14 @@ def _create_task_session_factory() -> async_sessionmaker[AsyncSession]:
     )
 
 
-@celery_app.task(bind=True, max_retries=3)  # type: ignore[untyped-decorator]
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    soft_time_limit=270,  # 4.5 minutes (warning)
+    time_limit=300,  # 5 minutes (hard kill)
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def execute_check(self: Any, job_id: str) -> dict[str, Any]:
     """Execute a data quality check.
 
@@ -58,7 +65,30 @@ def execute_check(self: Any, job_id: str) -> dict[str, Any]:
     """
     import asyncio
 
-    return asyncio.run(_execute_check_async(self, job_id))
+    try:
+        return asyncio.run(_execute_check_async(self, job_id))
+    except Exception as exc:
+        # Ensure job is marked as failed even if async task fails completely
+        import asyncio
+
+        asyncio.run(_mark_job_failed_on_error(job_id, str(exc)))
+        raise
+
+
+async def _mark_job_failed_on_error(job_id: str, error_message: str) -> None:
+    """Mark job as failed when execution fails completely."""
+    session_factory = _create_task_session_factory()
+    async with session_factory() as db:
+        from sqlalchemy import select
+
+        result = await db.execute(select(Job).where(Job.id == job_id))
+        job = result.scalar_one_or_none()
+
+        if job and job.status not in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            job.status = JobStatus.FAILED
+            job.error_message = f"Worker error: {error_message}"
+            job.completed_at = datetime.now(UTC)
+            await db.commit()
 
 
 async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
@@ -410,6 +440,115 @@ def process_scheduled_checks() -> dict[str, Any]:
     import asyncio
 
     return asyncio.run(_process_scheduled_checks_async())
+
+
+@celery_app.task  # type: ignore[untyped-decorator]
+def recover_orphaned_jobs() -> dict[str, Any]:
+    """Mark orphaned running/pending jobs as failed on worker startup.
+
+    When a worker restarts, any jobs marked as 'running' or 'pending'
+    in the database are orphaned. This task marks them as failed so
+    they don't appear stuck forever.
+    """
+    import asyncio
+
+    return asyncio.run(_recover_orphaned_jobs_async())
+
+
+async def _recover_orphaned_jobs_async() -> dict[str, Any]:
+    """Async implementation of orphaned job recovery."""
+    session_factory = _create_task_session_factory()
+    async with session_factory() as db:
+        from sqlalchemy import or_, select
+
+        # Find jobs stuck in RUNNING or PENDING state
+        # Jobs are considered orphaned if:
+        # - RUNNING for more than 10 minutes, OR
+        # - PENDING for more than 10 minutes (started_at is null, use created_at)
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=10)
+
+        result = await db.execute(
+            select(Job).where(
+                Job.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+                or_(
+                    # Running jobs: check started_at
+                    Job.started_at < cutoff_time,
+                    # Pending jobs: check created_at (started_at is null)
+                    Job.started_at.is_(None),
+                ),
+                # Ensure pending jobs are also old enough
+                Job.created_at < cutoff_time,
+            )
+        )
+        orphaned_jobs = result.scalars().all()
+
+        recovered = 0
+        for job in orphaned_jobs:
+            job.status = JobStatus.FAILED
+            job.error_message = "Job orphaned - worker restarted or crashed"
+            job.completed_at = datetime.now(UTC)
+            recovered += 1
+
+        await db.commit()
+
+        return {"recovered": recovered, "job_ids": [str(j.id) for j in orphaned_jobs]}
+
+
+@celery_app.task  # type: ignore[untyped-decorator]
+def cleanup_stuck_jobs() -> dict[str, Any]:
+    """Periodically check for and fail jobs that have exceeded timeout.
+
+    Runs every 5 minutes to find jobs running longer than the configured
+    timeout and marks them as failed.
+    """
+    import asyncio
+
+    return asyncio.run(_cleanup_stuck_jobs_async())
+
+
+async def _cleanup_stuck_jobs_async() -> dict[str, Any]:
+    """Async implementation of stuck job cleanup."""
+    session_factory = _create_task_session_factory()
+    async with session_factory() as db:
+        from sqlalchemy import or_, select
+
+        settings = get_settings()
+        timeout_minutes = settings.check_execution_timeout // 60
+
+        # Calculate cutoff times
+        running_cutoff = datetime.now(UTC) - timedelta(seconds=settings.check_execution_timeout)
+        # Pending jobs timeout after 1 hour (they should have been picked up by a worker)
+        pending_cutoff = datetime.now(UTC) - timedelta(hours=1)
+
+        # Find jobs stuck in RUNNING or PENDING state
+        result = await db.execute(
+            select(Job).where(
+                Job.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+                or_(
+                    # Running jobs: check started_at
+                    Job.started_at < running_cutoff,
+                    # Pending jobs: check created_at (started_at is null)
+                    Job.started_at.is_(None),
+                ),
+                # For pending jobs, use pending_cutoff (1 hour)
+                Job.created_at < pending_cutoff,
+            )
+        )
+        stuck_jobs = result.scalars().all()
+
+        cleaned = 0
+        for job in stuck_jobs:
+            job.status = JobStatus.FAILED
+            if job.status == JobStatus.RUNNING:
+                job.error_message = f"Job exceeded timeout of {timeout_minutes} minutes"
+            else:
+                job.error_message = "Job stuck in pending - no worker picked it up within 1 hour"
+            job.completed_at = datetime.now(UTC)
+            cleaned += 1
+
+        await db.commit()
+
+        return {"cleaned": cleaned, "timeout_minutes": timeout_minutes}
 
 
 async def _process_scheduled_checks_async() -> dict[str, Any]:

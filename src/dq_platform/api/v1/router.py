@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from dq_platform.api.v1 import (
     checks,
     connections,
+    dimensions,
     incidents,
     jobs,
     notifications,
@@ -21,3 +22,4 @@ api_router.include_router(results.router, prefix="/results", tags=["results"])
 api_router.include_router(incidents.router, prefix="/incidents", tags=["incidents"])
 api_router.include_router(schedules.router, prefix="/schedules", tags=["schedules"])
 api_router.include_router(notifications.router, prefix="/notifications/channels", tags=["notifications"])
+api_router.include_router(dimensions.router, prefix="/dimensions", tags=["dimensions"])

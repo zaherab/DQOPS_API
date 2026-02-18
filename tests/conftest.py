@@ -1,6 +1,7 @@
 """Pytest configuration and fixtures."""
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator, Generator
 
 import pytest
@@ -9,15 +10,16 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from dq_platform.config import Settings, get_settings
 from dq_platform.db.session import get_db
 from dq_platform.main import app
 from dq_platform.models.base import Base
 
-# Test database URL (in-memory SQLite for tests)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Test database URL - use PostgreSQL for tests (JSONB compatibility)
+# Use 'postgres' as hostname when running inside Docker, 'localhost' for local
+_default_db_url = "postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform"
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", _default_db_url)
 
 
 def get_test_settings() -> Settings:
@@ -37,20 +39,22 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop.close()
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="function")
 async def async_engine():
     """Create async test engine."""
     engine = create_async_engine(
         TEST_DATABASE_URL,
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+        pool_size=5,
+        max_overflow=0,
     )
 
+    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
+    # Clean up - drop tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
@@ -59,11 +63,13 @@ async def async_engine():
 
 @pytest_asyncio.fixture
 async def db_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
-    """Create async database session for tests."""
+    """Create async database session for tests with transaction rollback."""
     async_session_factory = sessionmaker(
         async_engine,
         class_=AsyncSession,
         expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
     )
 
     async with async_session_factory() as session:

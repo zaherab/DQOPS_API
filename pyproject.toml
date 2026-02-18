@@ -70,6 +70,30 @@ packages = ["src/dq_platform"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+addopts = "--cov=dq_platform --cov-report=term-missing --cov-report=html:htmlcov --cov-fail-under=80"
+asyncio_default_test_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["src/dq_platform"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "src/dq_platform/db/migrations/*",
+    "src/dq_platform/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "pass",
+    "^\\s*\\.\\.\\.",
+    "# noqa",
+]
 
 [tool.ruff]
 line-length = 120
