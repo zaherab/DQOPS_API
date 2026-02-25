@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for DQ Platform
 # Stage 1: Builder - Install dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Install build-time system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,7 +20,7 @@ COPY pyproject.toml README.md ./
 RUN pip install --no-cache-dir -e .
 
 # Stage 2: Runtime - Minimal image with application code
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Install runtime system dependencies only (no compilers)
 RUN apt-get update && apt-get install -y --no-install-recommends \
