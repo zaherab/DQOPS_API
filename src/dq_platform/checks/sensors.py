@@ -235,7 +235,7 @@ class Sensor:
     def render(self, params: dict[str, Any]) -> str:
         """Render the SQL template with parameters."""
         template = Template(self.template)
-        return template.render(**params)
+        return str(template.render(**params))
 
 
 # =============================================================================

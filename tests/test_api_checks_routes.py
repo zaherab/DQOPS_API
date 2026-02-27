@@ -21,13 +21,15 @@ class TestCheckAPI:
         conn = Connection(
             name="test-connection",
             connection_type=ConnectionType.POSTGRESQL,
-            config_encrypted=encrypt_config({
-                "host": "localhost",
-                "port": 5432,
-                "database": "testdb",
-                "user": "testuser",
-                "password": "testpass",
-            }),
+            config_encrypted=encrypt_config(
+                {
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "testdb",
+                    "user": "testuser",
+                    "password": "testpass",
+                }
+            ),
         )
         db_session.add(conn)
         await db_session.flush()
@@ -105,9 +107,7 @@ class TestCheckAPI:
 
     def test_list_checks_with_filters(self, sync_client: TestClient, check, connection):
         """GET /checks - Filter by connection_id works."""
-        response = sync_client.get(
-            f"/api/v1/checks?connection_id={connection.id}"
-        )
+        response = sync_client.get(f"/api/v1/checks?connection_id={connection.id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -189,9 +189,7 @@ class TestCheckAPI:
         """POST /checks/{id}/run - Run check returns 202 with job info."""
         check_id = str(check.id)
 
-        with patch(
-            "dq_platform.services.execution_service.execute_check"
-        ) as mock_execute:
+        with patch("dq_platform.services.execution_service.execute_check") as mock_execute:
             mock_task = MagicMock()
             mock_task.id = "celery-task-id-123"
             mock_execute.delay.return_value = mock_task
@@ -209,12 +207,11 @@ class TestCheckAPI:
         """POST /checks/{id}/preview - Preview check returns 200."""
         check_id = str(check.id)
 
-        with patch(
-            "dq_platform.services.check_service.CheckService.preview_check"
-        ) as mock_preview:
+        with patch("dq_platform.services.check_service.CheckService.preview_check") as mock_preview:
+            from datetime import UTC, datetime
+
             from dq_platform.checks.rules import Severity
             from dq_platform.services.check_service import PreviewResult
-            from datetime import datetime, UTC
 
             mock_preview.return_value = PreviewResult(
                 check_type="nulls_percent",
@@ -239,12 +236,11 @@ class TestCheckAPI:
 
     def test_validate_check_preview(self, sync_client: TestClient, connection):
         """POST /checks/validate/preview - Preview unsaved config returns 200."""
-        with patch(
-            "dq_platform.services.check_service.CheckService.preview_check_config"
-        ) as mock_preview:
+        with patch("dq_platform.services.check_service.CheckService.preview_check_config") as mock_preview:
+            from datetime import UTC, datetime
+
             from dq_platform.checks.rules import Severity
             from dq_platform.services.check_service import PreviewResult
-            from datetime import datetime, UTC
 
             mock_preview.return_value = PreviewResult(
                 check_type="nulls_percent",

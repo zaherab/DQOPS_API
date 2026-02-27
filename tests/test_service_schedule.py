@@ -40,7 +40,8 @@ class TestScheduleService:
 
     async def test_create_success(self, service, mock_db):
         """Test create() creates a schedule successfully."""
-        from datetime import datetime, UTC
+        from datetime import datetime
+
         check_id = uuid4()
 
         # Create a real Check object
@@ -224,7 +225,7 @@ class TestScheduleService:
 
     async def test_mark_executed(self, service, mock_db):
         """Test mark_executed() updates last_run_at and next_run_at."""
-        from datetime import datetime, UTC, timedelta
+        from datetime import UTC, datetime
 
         schedule_id = uuid4()
 
@@ -249,11 +250,11 @@ class TestScheduleService:
     def test_validate_cron_valid(self, service):
         """Test _validate_cron() returns True for valid expressions."""
         valid_expressions = [
-            "0 0 * * *",      # Daily at midnight
-            "0 */6 * * *",     # Every 6 hours
-            "0 0 * * 0",      # Weekly on Sunday
-            "0 0 1 * *",      # Monthly on 1st
-            "*/5 * * * *",    # Every 5 minutes
+            "0 0 * * *",  # Daily at midnight
+            "0 */6 * * *",  # Every 6 hours
+            "0 0 * * 0",  # Weekly on Sunday
+            "0 0 1 * *",  # Monthly on 1st
+            "*/5 * * * *",  # Every 5 minutes
         ]
 
         for expr in valid_expressions:
@@ -264,7 +265,7 @@ class TestScheduleService:
         invalid_expressions = [
             "invalid",
             "",
-            "* * * *",        # Too few fields
+            "* * * *",  # Too few fields
             "abc def ghi jkl mno",
         ]
 

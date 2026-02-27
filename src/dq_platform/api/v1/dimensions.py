@@ -42,8 +42,7 @@ async def get_dimension_scores(
 async def get_dimension_mapping() -> list[DimensionMappingEntry]:
     """Return the static category-to-dimension mapping."""
     return [
-        DimensionMappingEntry(category=cat, dimension=dim.value)
-        for cat, dim in sorted(CATEGORY_TO_DIMENSION.items())
+        DimensionMappingEntry(category=cat, dimension=dim.value) for cat, dim in sorted(CATEGORY_TO_DIMENSION.items())
     ]
 
 

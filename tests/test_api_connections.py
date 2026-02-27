@@ -126,13 +126,10 @@ class TestConnectionAPI:
 
         assert response.status_code == 200
         data = response.json()
-        assert all(
-            item["connection_type"] == "postgresql" for item in data["items"]
-        )
+        assert all(item["connection_type"] == "postgresql" for item in data["items"])
 
     def test_get_connection_success(self, sync_client: TestClient, connection):
         """GET /connections/{id} - Get existing connection returns 200."""
-        import asyncio
 
         conn_id = str(connection.id)
         response = sync_client.get(
@@ -231,9 +228,7 @@ class TestConnectionAPI:
         """POST /connections/{id}/test - Test connection returns 200."""
         conn_id = str(connection.id)
 
-        with patch(
-            "dq_platform.services.connection_service.get_connector"
-        ) as mock_get_connector:
+        with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
             mock_connector = MagicMock()
             mock_connector.test_connection.return_value = True
             mock_get_connector.return_value = mock_connector
@@ -252,9 +247,7 @@ class TestConnectionAPI:
         """POST /connections/{id}/test - Connection failure returns 200 with success=False."""
         conn_id = str(connection.id)
 
-        with patch(
-            "dq_platform.services.connection_service.get_connector"
-        ) as mock_get_connector:
+        with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
             mock_connector = MagicMock()
             mock_connector.test_connection.side_effect = Exception("Connection refused")
             mock_get_connector.return_value = mock_connector
@@ -273,9 +266,7 @@ class TestConnectionAPI:
         """GET /connections/{id}/schemas - Get schemas returns 200."""
         conn_id = str(connection.id)
 
-        with patch(
-            "dq_platform.services.connection_service.get_connector"
-        ) as mock_get_connector:
+        with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
             mock_connector = MagicMock()
             mock_connector.get_schemas.return_value = ["public", "schema1", "schema2"]
             mock_get_connector.return_value = mock_connector
@@ -296,9 +287,7 @@ class TestConnectionAPI:
 
         from dq_platform.connectors.base import TableInfo
 
-        with patch(
-            "dq_platform.services.connection_service.get_connector"
-        ) as mock_get_connector:
+        with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
             mock_connector = MagicMock()
             mock_connector.get_tables.return_value = [
                 TableInfo(
@@ -334,9 +323,7 @@ class TestConnectionAPI:
 
         from dq_platform.connectors.base import ColumnInfo
 
-        with patch(
-            "dq_platform.services.connection_service.get_connector"
-        ) as mock_get_connector:
+        with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
             mock_connector = MagicMock()
             mock_connector.get_columns.return_value = [
                 ColumnInfo(

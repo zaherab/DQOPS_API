@@ -368,7 +368,7 @@ class GXCheckExecutor:
             return value.timestamp()
 
         # Handle numeric types
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
 
         # Handle boolean
@@ -376,7 +376,7 @@ class GXCheckExecutor:
             return 1.0 if value else 0.0
 
         # Handle lists/arrays - store in result_details and return count
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             result_details["observed_value"] = list(value) if not isinstance(value, list) else value
             return float(len(value)) if value else None
 

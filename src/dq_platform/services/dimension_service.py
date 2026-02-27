@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +41,10 @@ def _check_type_to_category(check_type_str: str) -> str | None:
 
 
 def _score_from_severity_counts(
-    passed: int, warning: int, error: int, fatal: int,
+    passed: int,
+    warning: int,
+    error: int,
+    fatal: int,
 ) -> float:
     """Compute a 0-100 score from severity counts using weighted penalties."""
     total = passed + warning + error + fatal
@@ -108,11 +111,11 @@ class DimensionService:
         # 3. Get latest result per check
         check_id_list = [c.id for c in checks]
         latest_results = await self._get_latest_results(
-            check_id_list, from_date, to_date,
+            check_id_list,
+            from_date,
+            to_date,
         )
-        result_by_check: dict[uuid.UUID, CheckResult] = {
-            r.check_id: r for r in latest_results
-        }
+        result_by_check: dict[uuid.UUID, CheckResult] = {r.check_id: r for r in latest_results}
 
         # 4. Score each dimension
         dimension_scores: list[DimensionScore] = []
@@ -169,18 +172,14 @@ class DimensionService:
                 )
             )
 
-        overall = (
-            round(sum(assessed_scores) / len(assessed_scores), 1)
-            if assessed_scores
-            else None
-        )
+        overall = round(sum(assessed_scores) / len(assessed_scores), 1) if assessed_scores else None
 
         return DimensionScoreResponse(
             dimensions=dimension_scores,
             overall_score=overall,
             assessed_count=len(assessed_scores),
             total_dimensions=len(ALL_DIMENSIONS),
-            computed_at=datetime.now(timezone.utc),
+            computed_at=datetime.now(UTC),
         )
 
     async def get_dimension_trend(
@@ -193,23 +192,17 @@ class DimensionService:
         odps_dim = ODPSDimension(dimension)
 
         # Categories for this dimension
-        categories = {
-            cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim
-        }
+        categories = {cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim}
 
         # Checks in those categories for the connection
         checks = await self._get_checks(connection_id)
-        dim_check_ids = [
-            c.id
-            for c in checks
-            if _check_type_to_category(c.check_type.value) in categories
-        ]
+        dim_check_ids = [c.id for c in checks if _check_type_to_category(c.check_type.value) in categories]
 
         if not dim_check_ids:
             return DimensionTrendResponse(dimension=dimension, snapshots=[])
 
         # Query results within date range
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
         stmt = (
             select(CheckResult)
             .where(
@@ -255,16 +248,10 @@ class DimensionService:
         """Get all checks contributing to a dimension with their latest result."""
         odps_dim = ODPSDimension(dimension)
 
-        categories = {
-            cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim
-        }
+        categories = {cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim}
 
         checks = await self._get_checks(connection_id)
-        dim_checks = [
-            c
-            for c in checks
-            if _check_type_to_category(c.check_type.value) in categories
-        ]
+        dim_checks = [c for c in checks if _check_type_to_category(c.check_type.value) in categories]
 
         if not dim_checks:
             return []
@@ -280,11 +267,7 @@ class DimensionService:
             result = result_by_check.get(check.id)
             sev_str = None
             if result and result.severity:
-                sev_str = (
-                    result.severity.value
-                    if hasattr(result.severity, "value")
-                    else str(result.severity)
-                )
+                sev_str = result.severity.value if hasattr(result.severity, "value") else str(result.severity)
             details.append(
                 DimensionCheckDetail(
                     check_id=check.id,
@@ -296,9 +279,7 @@ class DimensionService:
                     target_column=check.target_column,
                     latest_passed=result.passed if result else None,
                     latest_severity=sev_str,
-                    latest_executed_at=(
-                        result.executed_at if result else None
-                    ),
+                    latest_executed_at=(result.executed_at if result else None),
                 )
             )
         return details
@@ -338,22 +319,18 @@ class DimensionService:
         if to_date:
             date_filters.append(CheckResult.executed_at <= to_date)
 
-        latest_sub = (
-            select(
-                CheckResult.check_id,
-                func.max(CheckResult.executed_at).label("max_at"),
-            )
-            .where(CheckResult.check_id.in_(check_ids))
-        )
+        latest_stmt = select(
+            CheckResult.check_id,
+            func.max(CheckResult.executed_at).label("max_at"),
+        ).where(CheckResult.check_id.in_(check_ids))
         for f in date_filters:
-            latest_sub = latest_sub.where(f)
-        latest_sub = latest_sub.group_by(CheckResult.check_id).subquery()
+            latest_stmt = latest_stmt.where(f)
+        latest_sub = latest_stmt.group_by(CheckResult.check_id).subquery()
 
         # Main query joining on latest
         stmt = select(CheckResult).join(
             latest_sub,
-            (CheckResult.check_id == latest_sub.c.check_id)
-            & (CheckResult.executed_at == latest_sub.c.max_at),
+            (CheckResult.check_id == latest_sub.c.check_id) & (CheckResult.executed_at == latest_sub.c.max_at),
         )
 
         result = await self.db.execute(stmt)

@@ -21,11 +21,13 @@ class TestIncidentAPI:
         conn = Connection(
             name="test-connection",
             connection_type=ConnectionType.POSTGRESQL,
-            config_encrypted=encrypt_config({
-                "host": "localhost",
-                "port": 5432,
-                "database": "testdb",
-            }),
+            config_encrypted=encrypt_config(
+                {
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "testdb",
+                }
+            ),
         )
         db_session.add(conn)
         await db_session.flush()
@@ -49,7 +51,7 @@ class TestIncidentAPI:
     @pytest.fixture
     async def incident(self, db_session, check):
         """Create a test incident."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         incident = Incident(
             check_id=check.id,

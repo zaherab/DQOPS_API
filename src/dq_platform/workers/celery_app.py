@@ -51,7 +51,7 @@ celery_app.conf.update(
 
 
 # Run recovery task on worker startup
-@celery_app.on_after_configure.connect
+@celery_app.on_after_configure.connect  # type: ignore[untyped-decorator]
 def setup_periodic_tasks(sender: Celery, **kwargs: Any) -> None:
     """Set up periodic tasks and run startup recovery."""
     # Import here to avoid circular imports

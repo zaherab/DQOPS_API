@@ -64,7 +64,7 @@ class ResultService:
             target_column=check.target_column,
             check_type=check.check_type.value,
             actual_value=result_value,
-            expected_value=float(expected) if isinstance(expected, (int, float)) else None,
+            expected_value=float(expected) if isinstance(expected, int | float) else None,
             passed=(status == "passed"),
             severity=ResultSeverity(severity),
             execution_time_ms=execution_time_ms,

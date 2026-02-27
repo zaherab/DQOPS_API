@@ -19,8 +19,8 @@ class BigQueryConnector(BaseConnector):
             credentials_json = self.config.get("credentials_json")
 
             if credentials_json:
-                credentials = service_account.Credentials.from_service_account_info(
-                    credentials_json  # type: ignore[no-untyped-call]
+                credentials = service_account.Credentials.from_service_account_info(  # type: ignore[no-untyped-call]
+                    credentials_json
                 )
                 self._connection = bigquery.Client(
                     project=project_id,

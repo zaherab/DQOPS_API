@@ -40,9 +40,7 @@ class TestConnectionService:
 
     async def test_create_encrypts_config(self, service, mock_db, sample_config):
         """Test that create() encrypts the config."""
-        with patch(
-            "dq_platform.services.connection_service.encrypt_config"
-        ) as mock_encrypt:
+        with patch("dq_platform.services.connection_service.encrypt_config") as mock_encrypt:
             mock_encrypt.return_value = {"encrypted": "data"}
 
             result = await service.create(
@@ -60,9 +58,7 @@ class TestConnectionService:
 
     async def test_create_with_optional_fields(self, service, mock_db, sample_config):
         """Test create() with all optional fields."""
-        with patch(
-            "dq_platform.services.connection_service.encrypt_config"
-        ) as mock_encrypt:
+        with patch("dq_platform.services.connection_service.encrypt_config") as mock_encrypt:
             mock_encrypt.return_value = {"encrypted": "data"}
 
             result = await service.create(
@@ -151,9 +147,7 @@ class TestConnectionService:
 
         mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
 
-        connections, total = await service.list_connections(
-            connection_type=ConnectionType.POSTGRESQL
-        )
+        connections, total = await service.list_connections(connection_type=ConnectionType.POSTGRESQL)
 
         assert total == 1
         assert len(connections) == 1
@@ -170,9 +164,7 @@ class TestConnectionService:
 
         # Mock get() to return the connection
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.encrypt_config"
-            ) as mock_encrypt:
+            with patch("dq_platform.services.connection_service.encrypt_config") as mock_encrypt:
                 mock_encrypt.return_value = {"encrypted": "new-config"}
 
                 result = await service.update(
@@ -195,9 +187,7 @@ class TestConnectionService:
         new_config = {"host": "new-host", "password": "new-pass"}
 
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.encrypt_config"
-            ) as mock_encrypt:
+            with patch("dq_platform.services.connection_service.encrypt_config") as mock_encrypt:
                 mock_encrypt.return_value = {"encrypted": "new-data"}
 
                 await service.update(
@@ -228,14 +218,10 @@ class TestConnectionService:
         mock_connection.config_encrypted = {"encrypted": "config"}
 
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.decrypt_config"
-            ) as mock_decrypt:
+            with patch("dq_platform.services.connection_service.decrypt_config") as mock_decrypt:
                 mock_decrypt.return_value = {"host": "localhost", "port": 5432}
 
-                with patch(
-                    "dq_platform.services.connection_service.get_connector"
-                ) as mock_get_connector:
+                with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
                     mock_connector = MagicMock()
                     mock_connector.test_connection.return_value = True
                     mock_get_connector.return_value = mock_connector
@@ -255,14 +241,10 @@ class TestConnectionService:
         expected_schemas = ["public", "schema1", "schema2"]
 
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.decrypt_config"
-            ) as mock_decrypt:
+            with patch("dq_platform.services.connection_service.decrypt_config") as mock_decrypt:
                 mock_decrypt.return_value = {"host": "localhost"}
 
-                with patch(
-                    "dq_platform.services.connection_service.get_connector"
-                ) as mock_get_connector:
+                with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
                     mock_connector = MagicMock()
                     mock_connector.get_schemas.return_value = expected_schemas
                     mock_get_connector.return_value = mock_connector
@@ -286,14 +268,10 @@ class TestConnectionService:
         ]
 
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.decrypt_config"
-            ) as mock_decrypt:
+            with patch("dq_platform.services.connection_service.decrypt_config") as mock_decrypt:
                 mock_decrypt.return_value = {"host": "localhost"}
 
-                with patch(
-                    "dq_platform.services.connection_service.get_connector"
-                ) as mock_get_connector:
+                with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
                     mock_connector = MagicMock()
                     mock_connector.get_tables.return_value = expected_tables
                     mock_get_connector.return_value = mock_connector
@@ -318,14 +296,10 @@ class TestConnectionService:
         ]
 
         with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
-            with patch(
-                "dq_platform.services.connection_service.decrypt_config"
-            ) as mock_decrypt:
+            with patch("dq_platform.services.connection_service.decrypt_config") as mock_decrypt:
                 mock_decrypt.return_value = {"host": "localhost"}
 
-                with patch(
-                    "dq_platform.services.connection_service.get_connector"
-                ) as mock_get_connector:
+                with patch("dq_platform.services.connection_service.get_connector") as mock_get_connector:
                     mock_connector = MagicMock()
                     mock_connector.get_columns.return_value = expected_columns
                     mock_get_connector.return_value = mock_connector

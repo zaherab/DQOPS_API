@@ -21,11 +21,13 @@ class TestScheduleAPI:
         conn = Connection(
             name="test-connection",
             connection_type=ConnectionType.POSTGRESQL,
-            config_encrypted=encrypt_config({
-                "host": "localhost",
-                "port": 5432,
-                "database": "testdb",
-            }),
+            config_encrypted=encrypt_config(
+                {
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "testdb",
+                }
+            ),
         )
         db_session.add(conn)
         await db_session.flush()
@@ -49,7 +51,7 @@ class TestScheduleAPI:
     @pytest.fixture
     async def schedule(self, db_session, check):
         """Create a test schedule."""
-        from datetime import datetime, UTC, timedelta
+        from datetime import UTC, datetime, timedelta
 
         schedule = Schedule(
             name="test-schedule",

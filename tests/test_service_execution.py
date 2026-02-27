@@ -1,7 +1,6 @@
 """Unit tests for ExecutionService."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
 from uuid import uuid4
 
 import pytest
@@ -235,9 +234,7 @@ class TestExecutionService:
         service.get_job = mock_get_job
 
         # Patch where it's imported (inside the function uses workers.tasks)
-        with patch(
-            "dq_platform.workers.tasks.execute_check"
-        ) as mock_execute:
+        with patch("dq_platform.workers.tasks.execute_check") as mock_execute:
             mock_task = MagicMock()
             mock_task.id = "celery-task-123"
             mock_execute.delay.return_value = mock_task

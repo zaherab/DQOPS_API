@@ -1,10 +1,10 @@
 # DQ Platform
 
-A modern, API-first data quality monitoring platform for validating and monitoring data across multiple sources. Implements a DQOps-equivalent data quality system.
+A modern, API-first data quality monitoring platform for validating and monitoring data across multiple sources. Implements a DQOps-equivalent data quality system with ODPS 4.1 dimension scoring.
 
 ## Overview
 
-DQ Platform provides automated data quality checks, anomaly detection, and incident management for data teams. Built as a standalone API service with a DQOps-style architecture (Sensors + Rules + Checks).
+DQ Platform provides automated data quality checks, anomaly detection, and incident management for data teams. Built as a standalone API service with a DQOps-style architecture (Sensors + Rules + Checks). Serves as the data quality engine for the [MLG (Minimum Lovable Governance)](https://github.com/your-org/MLG-Spec-Reader) platform, providing check execution, result storage, and ODPS dimension scoring via REST API.
 
 ## Key Features
 
@@ -17,6 +17,10 @@ DQ Platform provides automated data quality checks, anomaly detection, and incid
 - **API-First Design** - Every operation available via REST API
 - **Incident Management** - Group failures, track resolution, reduce alert fatigue
 - **Webhook Notifications** - Real-time alerts on check failures and incident lifecycle events
+- **ODPS 4.1 Dimension Scoring** - Maps check results to 8 standardized quality dimensions (accuracy, completeness, conformity, consistency, coverage, timeliness, validity, uniqueness)
+- **Batch Execution** - Run multiple checks in a single API call
+- **Cron Scheduling** - Schedule checks with cron expressions via Celery Beat
+- **MLG Integration** - Serves as the DQ engine for the MLG governance platform
 
 ## Implemented Check Categories
 
@@ -144,6 +148,137 @@ docker compose down
 # Stop and remove volumes (WARNING: deletes all data)
 docker compose down -v
 ```
+
+## API Reference
+
+All endpoints are under `/api/v1` and require `X-API-Key` authentication.
+
+### Connections
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/connections` | Create connection |
+| `GET` | `/connections` | List connections (filter by `connection_type`) |
+| `GET` | `/connections/{id}` | Get connection |
+| `PATCH` | `/connections/{id}` | Update connection |
+| `DELETE` | `/connections/{id}` | Delete connection |
+| `POST` | `/connections/{id}/test` | Test connection |
+| `GET` | `/connections/{id}/schemas` | List schemas |
+| `GET` | `/connections/{id}/schemas/{schema}/tables` | List tables |
+| `GET` | `/connections/{id}/schemas/{schema}/tables/{table}/columns` | List columns |
+
+### Checks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/checks` | Create check |
+| `GET` | `/checks` | List checks (filter by `connection_id`, `check_type`, `target_table`, `is_active`) |
+| `GET` | `/checks/{id}` | Get check |
+| `PATCH` | `/checks/{id}` | Update check |
+| `DELETE` | `/checks/{id}` | Delete check |
+| `POST` | `/checks/{id}/run` | Run check (async via Celery) |
+| `POST` | `/checks/{id}/preview` | Preview check (sync, no persistence) |
+| `POST` | `/checks/validate/preview` | Preview without saving |
+| `POST` | `/checks/batch/run` | Run multiple checks (`check_ids` array) |
+| `GET` | `/checks/types` | List all 171 check types (filter by `category`) |
+| `GET` | `/checks/categories` | List 21 check categories |
+| `GET` | `/checks/modes` | List check modes (profiling, monitoring, partitioned) |
+| `GET` | `/checks/time-scales` | List time scales (daily, monthly) |
+
+### Results
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/results` | Query results (filter by `check_id`, `connection_id`, `passed`, `from_date`, `to_date`) |
+| `GET` | `/results/summary` | Aggregated pass rate, execution count, avg execution time |
+
+### Incidents
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/incidents` | List incidents (filter by `check_id`, `status`, `severity`) |
+| `GET` | `/incidents/{id}` | Get incident details |
+| `PATCH` | `/incidents/{id}` | Update status (acknowledge/resolve with `by` and `notes`) |
+| `DELETE` | `/incidents/{id}` | Delete incident |
+
+### Jobs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/jobs` | List background jobs (filter by `check_id`, `status`) |
+| `GET` | `/jobs/{id}` | Get job status |
+
+### Schedules
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/schedules` | Create cron schedule |
+| `GET` | `/schedules` | List schedules |
+| `PATCH` | `/schedules/{id}` | Update schedule |
+| `DELETE` | `/schedules/{id}` | Delete schedule |
+
+### Notifications
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/notifications/channels` | Create webhook channel |
+| `GET` | `/notifications/channels` | List channels |
+| `PATCH` | `/notifications/channels/{id}` | Update channel |
+| `DELETE` | `/notifications/channels/{id}` | Delete channel |
+| `POST` | `/notifications/channels/{id}/test` | Send test webhook |
+
+### ODPS Dimensions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/dimensions/scores` | Get scores for all 8 ODPS dimensions (filter by `connection_id`, `check_ids`, `from_date`, `to_date`) |
+| `GET` | `/dimensions/mapping` | Get static category-to-dimension mapping |
+| `GET` | `/dimensions/{dimension}/trend` | Get daily score trend for a dimension (`days` param, default 30) |
+| `GET` | `/dimensions/{dimension}/checks` | Get all checks contributing to a dimension |
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Deep health check (DB + Redis connectivity) |
+
+## ODPS 4.1 Dimension Scoring
+
+Check results are automatically mapped to 8 ODPS quality dimensions using a category-to-dimension mapping:
+
+| ODPS Dimension | Check Categories |
+|----------------|-----------------|
+| **Accuracy** | numeric, statistical, anomaly |
+| **Completeness** | nulls |
+| **Conformity** | text, patterns, accepted_values, pii |
+| **Consistency** | schema, referential, comparison |
+| **Coverage** | volume, availability |
+| **Timeliness** | timeliness, change, change_detection |
+| **Validity** | boolean, datetime, geographic, datatype |
+| **Uniqueness** | uniqueness |
+
+Scores are computed using severity-weighted penalties: `passed=0.0`, `warning=1.0`, `error=2.5`, `fatal=5.0`. Scores range from 0-100 with traffic-light status (green >= 80, amber >= 60, red < 60).
+
+## MLG Platform Integration
+
+DQ Platform serves as the data quality engine for the MLG governance platform. MLG connects via `dqops-client.ts` and proxies requests through `/api/dqops/*` routes.
+
+**Integration pattern:**
+```
+MLG Data Product
+  ├── dataQualityId (FK) ──► DQ Profile (defines quality standards/targets)
+  └── dqopsConnectionId ──► DQ Platform Connection
+        ├── Checks defined and executed in DQ Platform
+        ├── Results queried via /api/v1/results
+        ├── Incidents tracked via /api/v1/incidents
+        └── ODPS dimension scores via /api/v1/dimensions/scores
+```
+
+**Division of responsibility:**
+- **MLG** defines quality standards (DQ Profiles with ODPS dimension targets), links data products to DQ Platform connections, and displays quality metrics in product specs
+- **DQ Platform** implements checks, executes against data sources, stores time-series results, computes ODPS dimension scores, and manages incidents
+
+**Configuration:** MLG connects using `DQOPS_API_URL` and `DQOPS_API_KEY` environment variables.
 
 ## Documentation
 

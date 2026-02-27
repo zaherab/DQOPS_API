@@ -118,3 +118,7 @@ module = [
 ]
 ignore_missing_imports = true
 implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = "dq_platform.db.migrations.*"
+ignore_errors = true

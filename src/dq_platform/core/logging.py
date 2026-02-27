@@ -17,11 +17,11 @@ class RequestIdFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         """Add request_id to log record."""
         request_id = request_id_var.get()
-        record.request_id = request_id if request_id else "-"  # type: ignore[attr-defined]
+        record.request_id = request_id if request_id else "-"
         return True
 
 
-class CustomJsonFormatter(jsonlogger.JsonFormatter):
+class CustomJsonFormatter(jsonlogger.JsonFormatter):  # type: ignore[name-defined, misc]
     """Custom JSON formatter with request ID support."""
 
     def __init__(self) -> None:

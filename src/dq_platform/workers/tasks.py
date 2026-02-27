@@ -46,7 +46,7 @@ def _create_task_session_factory() -> async_sessionmaker[AsyncSession]:
     )
 
 
-@celery_app.task(
+@celery_app.task(  # type: ignore[untyped-decorator]
     bind=True,
     max_retries=3,
     soft_time_limit=270,  # 4.5 minutes (warning)

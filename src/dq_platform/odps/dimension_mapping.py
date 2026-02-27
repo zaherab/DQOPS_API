@@ -159,13 +159,7 @@ def get_all_check_types_for_dimension(
     Returns a list of DQOpsCheckType enum values.
     """
     # Find categories for this dimension
-    categories = {
-        cat for cat, dim in CATEGORY_TO_DIMENSION.items() if dim == dimension
-    }
+    categories = {cat for cat, dim in CATEGORY_TO_DIMENSION.items() if dim == dimension}
 
     # Find all check types in those categories
-    return [
-        ct
-        for ct, check_def in CHECK_REGISTRY.items()
-        if check_def.category in categories
-    ]
+    return [ct for ct, check_def in CHECK_REGISTRY.items() if check_def.category in categories]

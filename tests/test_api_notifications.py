@@ -163,9 +163,7 @@ class TestNotificationAPI:
         """POST /notifications/channels/{id}/test - Test webhook returns 200."""
         channel_id = str(channel.id)
 
-        with patch(
-            "dq_platform.services.notification_service.httpx.AsyncClient"
-        ) as mock_client_class:
+        with patch("dq_platform.services.notification_service.httpx.AsyncClient") as mock_client_class:
             mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
@@ -201,9 +199,7 @@ class TestNotificationAPI:
         """POST /notifications/channels/{id}/test - Failed webhook returns error info."""
         channel_id = str(channel.id)
 
-        with patch(
-            "dq_platform.services.notification_service.httpx.AsyncClient"
-        ) as mock_client_class:
+        with patch("dq_platform.services.notification_service.httpx.AsyncClient") as mock_client_class:
             mock_client = MagicMock()
             mock_client.post.side_effect = Exception("Connection timeout")
             mock_client_class.return_value.__aenter__ = MagicMock(return_value=mock_client)

@@ -1,6 +1,5 @@
 """Tests for exception handling."""
 
-import pytest
 from fastapi.testclient import TestClient
 
 from dq_platform.api.errors import (
@@ -17,6 +16,7 @@ class TestErrorHandlers:
     def test_not_found_error_structure(self, sync_client: TestClient):
         """NotFoundError returns 404 with proper JSON structure."""
         from fastapi import APIRouter
+
         from dq_platform.main import app
 
         # Create a test route that raises NotFoundError
@@ -46,6 +46,7 @@ class TestErrorHandlers:
     def test_validation_error_structure(self, sync_client: TestClient):
         """ValidationError returns 422 with proper JSON structure."""
         from fastapi import APIRouter
+
         from dq_platform.main import app
 
         test_router = APIRouter()
@@ -72,6 +73,7 @@ class TestErrorHandlers:
     def test_conflict_error_structure(self, sync_client: TestClient):
         """ConflictError returns 409 with proper JSON structure."""
         from fastapi import APIRouter
+
         from dq_platform.main import app
 
         test_router = APIRouter()
@@ -98,6 +100,7 @@ class TestErrorHandlers:
     def test_generic_exception_returns_500(self, sync_client: TestClient):
         """Generic exception returns 500 with sanitized message."""
         from fastapi import APIRouter
+
         from dq_platform.main import app
 
         test_router = APIRouter()
@@ -155,6 +158,7 @@ class TestErrorHandlers:
     def test_connection_error_structure(self, sync_client: TestClient):
         """ConnectionError returns 502 with proper structure."""
         from fastapi import APIRouter
+
         from dq_platform.api.errors import ConnectionError
         from dq_platform.main import app
 
@@ -180,6 +184,7 @@ class TestErrorHandlers:
     def test_execution_error_structure(self, sync_client: TestClient):
         """ExecutionError returns 500 with proper structure."""
         from fastapi import APIRouter
+
         from dq_platform.api.errors import ExecutionError
         from dq_platform.main import app
 

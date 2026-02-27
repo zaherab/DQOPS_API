@@ -251,9 +251,7 @@ class TestCheckService:
         """Test preview_check_config() raises NotFoundError when connection doesn't exist."""
         connection_id = uuid4()
 
-        with patch(
-            "dq_platform.services.check_service.ConnectionService"
-        ) as mock_conn_service_class:
+        with patch("dq_platform.services.check_service.ConnectionService") as mock_conn_service_class:
             mock_conn_service = MagicMock()
             mock_conn_service.get_connection = AsyncMock(return_value=None)
             mock_conn_service_class.return_value = mock_conn_service

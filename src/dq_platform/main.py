@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     setup_logging()
     logger.info("Application starting up", extra={"version": "0.1.0"})
-    app.state.redis = redis.from_url(settings.redis_url)
+    app.state.redis = redis.from_url(settings.redis_url)  # type: ignore[no-untyped-call]
     yield
     # Shutdown
     await app.state.redis.close()
@@ -53,7 +53,7 @@ app = FastAPI(
 
 # Add rate limiter to app state and exception handler
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):

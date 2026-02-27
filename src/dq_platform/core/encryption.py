@@ -81,4 +81,5 @@ def generate_encryption_key() -> str:
     Returns:
         Base64-encoded encryption key string.
     """
-    return Fernet.generate_key().decode()
+    key: str = Fernet.generate_key().decode()
+    return key
