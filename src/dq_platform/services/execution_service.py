@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError, ValidationError
@@ -109,14 +109,14 @@ class ExecutionService:
             query = query.where(Job.status == status)
 
         # Get total count
-        count_query = select(Job.id)
+        count_query = select(func.count(Job.id))
         if check_id:
             count_query = count_query.where(Job.check_id == check_id)
         if status:
             count_query = count_query.where(Job.status == status)
 
         count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
+        total = count_result.scalar() or 0
 
         # Get paginated results
         query = query.offset(offset).limit(limit).order_by(Job.created_at.desc())

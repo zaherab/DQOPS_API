@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError, ValidationError
@@ -208,7 +208,7 @@ class IncidentService:
             query = query.where(Incident.severity == severity)
 
         # Get total count
-        count_query = select(Incident.id)
+        count_query = select(func.count(Incident.id))
         if check_id:
             count_query = count_query.where(Incident.check_id == check_id)
         if status:
@@ -217,7 +217,7 @@ class IncidentService:
             count_query = count_query.where(Incident.severity == severity)
 
         count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
+        total = count_result.scalar() or 0
 
         # Get paginated results
         query = query.offset(offset).limit(limit).order_by(Incident.created_at.desc())

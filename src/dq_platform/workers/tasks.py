@@ -1,11 +1,13 @@
 """Celery tasks for background job execution."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from dq_platform.checks import Severity
 from dq_platform.checks.dqops_checks import DQOpsCheckType
@@ -25,25 +27,33 @@ from dq_platform.services.result_service import ResultService
 from dq_platform.services.schedule_service import ScheduleService
 from dq_platform.workers.celery_app import celery_app
 
+logger = logging.getLogger(__name__)
 
-def _create_task_session_factory() -> async_sessionmaker[AsyncSession]:
-    """Create a fresh async session factory for task execution.
+# Module-level singleton engine with NullPool (safe for Celery's asyncio.run() pattern)
+_task_engine: Any = None
+_task_session_factory_instance: async_sessionmaker[AsyncSession] | None = None
 
-    This avoids connection pool conflicts when running async code
-    inside Celery's synchronous task context with asyncio.run().
+
+def _get_task_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Return a cached async session factory for task execution.
+
+    Uses NullPool so each connection is opened/closed per session,
+    avoiding pool conflicts across Celery's asyncio.run() calls.
     """
-    settings = get_settings()
-    engine = create_async_engine(
-        settings.database_url,
-        pool_size=1,
-        max_overflow=0,
-    )
-    return async_sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-    )
+    global _task_engine, _task_session_factory_instance
+    if _task_session_factory_instance is None:
+        settings = get_settings()
+        _task_engine = create_async_engine(
+            settings.database_url,
+            poolclass=NullPool,
+        )
+        _task_session_factory_instance = async_sessionmaker(
+            _task_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            autoflush=False,
+        )
+    return _task_session_factory_instance
 
 
 @celery_app.task(  # type: ignore[untyped-decorator]
@@ -77,7 +87,7 @@ def execute_check(self: Any, job_id: str) -> dict[str, Any]:
 
 async def _mark_job_failed_on_error(job_id: str, error_message: str) -> None:
     """Mark job as failed when execution fails completely."""
-    session_factory = _create_task_session_factory()
+    session_factory = _get_task_session_factory()
     async with session_factory() as db:
         from sqlalchemy import select
 
@@ -94,7 +104,7 @@ async def _mark_job_failed_on_error(job_id: str, error_message: str) -> None:
 async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
     """Async implementation of check execution."""
     # Create a fresh session factory for this task execution
-    session_factory = _create_task_session_factory()
+    session_factory = _get_task_session_factory()
     async with session_factory() as db:
         # Get job
         result = await db.execute(select(Job).where(Job.id == job_id))
@@ -158,20 +168,17 @@ async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
             }
 
         except Exception as exc:
-            import traceback
-
-            tb = traceback.format_exc()
-            print(f"Task error: {exc}\n{tb}")
+            logger.error("Task execution error", exc_info=True)
 
             # Update job status
             job.status = JobStatus.FAILED
-            job.error_message = f"{exc}\n{tb}"
+            job.error_message = str(exc)
             job.completed_at = datetime.now(UTC)
             await db.commit()
 
-            # Retry logic
+            # Retry with exponential backoff (60s, 120s, 240s)
             if task.request.retries < 3:
-                raise task.retry(exc=exc, countdown=60)
+                raise task.retry(exc=exc, countdown=60 * (2**task.request.retries))
 
             return {
                 "status": "failed",
@@ -284,17 +291,10 @@ async def _run_check_execution(
             "executed_at": executed_at.isoformat(),
         }
 
-    except Exception as e:
-        return {
-            "passed": False,
-            "severity": Severity.ERROR.value,
-            "sensor_value": None,
-            "expected": check.parameters,
-            "actual": None,
-            "message": f"Execution failed: {str(e)}",
-            "executed_sql": None,
-            "executed_at": executed_at.isoformat(),
-        }
+    except Exception:
+        # Re-raise infrastructure errors so the outer handler marks the job
+        # as FAILED and retries, rather than creating false incidents.
+        raise
 
 
 async def _run_cross_source_execution(
@@ -402,14 +402,14 @@ async def _handle_failure(
     """
     incident_service = IncidentService(db)
 
-    # Check for existing open incident for this check
-    from sqlalchemy import select
-
+    # Check for existing open incident for this check (serialized via FOR UPDATE)
     result = await db.execute(
-        select(Incident).where(
+        select(Incident)
+        .where(
             Incident.check_id == check.id,
             Incident.status.in_([IncidentStatus.OPEN, IncidentStatus.ACKNOWLEDGED]),
         )
+        .with_for_update()
     )
     existing_incident = result.scalar_one_or_none()
 
@@ -457,7 +457,7 @@ def recover_orphaned_jobs() -> dict[str, Any]:
 
 async def _recover_orphaned_jobs_async() -> dict[str, Any]:
     """Async implementation of orphaned job recovery."""
-    session_factory = _create_task_session_factory()
+    session_factory = _get_task_session_factory()
     async with session_factory() as db:
         from sqlalchemy import or_, select
 
@@ -508,7 +508,7 @@ def cleanup_stuck_jobs() -> dict[str, Any]:
 
 async def _cleanup_stuck_jobs_async() -> dict[str, Any]:
     """Async implementation of stuck job cleanup."""
-    session_factory = _create_task_session_factory()
+    session_factory = _get_task_session_factory()
     async with session_factory() as db:
         from sqlalchemy import or_, select
 
@@ -553,24 +553,45 @@ async def _cleanup_stuck_jobs_async() -> dict[str, Any]:
 
 async def _process_scheduled_checks_async() -> dict[str, Any]:
     """Async implementation of schedule processing."""
-    session_factory = _create_task_session_factory()
-    async with session_factory() as db:
-        schedule_service = ScheduleService(db)
-        due_schedules = await schedule_service.get_due_schedules()
+    import redis.asyncio as aioredis
 
-        dispatched = []
-        for schedule in due_schedules:
-            job = Job(
-                check_id=schedule.check_id,
-                status=JobStatus.PENDING,
-                metadata_={"triggered_by": "scheduler", "schedule_id": str(schedule.id)},
-            )
-            db.add(job)
-            await db.flush()
+    settings = get_settings()
+    redis_client = aioredis.from_url(settings.redis_url)  # type: ignore[no-untyped-call]
+    try:
+        # Distributed lock prevents duplicate dispatch during rolling deploys
+        lock = redis_client.lock("dq_platform:scheduler:lock", timeout=55)
+        if not await lock.acquire(blocking=False):
+            return {"dispatched": 0, "skipped": "lock held by another instance"}
+    except Exception:
+        logger.warning("Failed to acquire scheduler lock, proceeding without lock", exc_info=True)
+        lock = None
 
-            execute_check.delay(str(job.id))
-            await schedule_service.mark_executed(schedule.id)
-            dispatched.append(str(schedule.id))
+    try:
+        session_factory = _get_task_session_factory()
+        async with session_factory() as db:
+            schedule_service = ScheduleService(db)
+            due_schedules = await schedule_service.get_due_schedules()
 
-        await db.commit()
-        return {"dispatched": len(dispatched), "schedule_ids": dispatched}
+            dispatched = []
+            for schedule in due_schedules:
+                job = Job(
+                    check_id=schedule.check_id,
+                    status=JobStatus.PENDING,
+                    metadata_={"triggered_by": "scheduler", "schedule_id": str(schedule.id)},
+                )
+                db.add(job)
+                await db.flush()
+
+                execute_check.delay(str(job.id))
+                await schedule_service.mark_executed(schedule.id)
+                dispatched.append(str(schedule.id))
+
+            await db.commit()
+            return {"dispatched": len(dispatched), "schedule_ids": dispatched}
+    finally:
+        if lock is not None:
+            try:
+                await lock.release()
+            except Exception:
+                pass
+        await redis_client.aclose()

@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Security
     encryption_key: str = ""  # Fernet key for credential encryption
     api_key_header: str = "X-API-Key"
+    valid_api_keys: list[str] = []  # empty = dev mode (accept any non-empty key)
+
+    # Rate limiting
+    rate_limit_default: str = "100/minute"
+
+    # CORS
+    cors_allowed_origins: list[str] = ["*"]
 
     # Execution
     check_execution_timeout: int = 300  # seconds

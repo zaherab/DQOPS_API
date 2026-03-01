@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError, ValidationError
@@ -184,7 +184,7 @@ class CheckService:
             query = query.where(Check.is_active == is_active)
 
         # Get total count
-        count_query = select(Check.id)
+        count_query = select(func.count(Check.id))
         if connection_id:
             count_query = count_query.where(Check.connection_id == connection_id)
         if check_type:
@@ -197,7 +197,7 @@ class CheckService:
             count_query = count_query.where(Check.is_active == is_active)
 
         count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
+        total = count_result.scalar() or 0
 
         # Get paginated results
         query = query.offset(offset).limit(limit).order_by(Check.created_at.desc())

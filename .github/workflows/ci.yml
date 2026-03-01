@@ -14,7 +14,6 @@ jobs:
   ruff:
     name: Ruff (Lint & Format)
     runs-on: ubuntu-latest
-    continue-on-error: true  # Remove this when code is cleaned up
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +35,6 @@ jobs:
   mypy:
     name: MyPy (Type Check)
     runs-on: ubuntu-latest
-    continue-on-error: true  # Remove this when type issues are fixed
     steps:
       - uses: actions/checkout@v4
 
