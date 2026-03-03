@@ -1,11 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-    branches-ignore:
-      - '**'
+  release:
+    types: [created]
 
 permissions:
   contents: write
@@ -14,7 +11,6 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
