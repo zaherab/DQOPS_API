@@ -1,9 +1,13 @@
 """API security and authentication."""
 
+import logging
+
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
 from dq_platform.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -29,10 +33,9 @@ async def verify_api_key(
 ) -> str:
     """Verify API key is present and valid.
 
-    This is a placeholder implementation. In production, you would:
-    1. Look up the API key in a database
-    2. Verify it's not expired or revoked
-    3. Return the associated user/tenant information
+    When ``settings.valid_api_keys`` is empty (dev mode), any non-empty key
+    is accepted. When populated, the key must match one of the configured
+    values.
 
     Args:
         api_key: API key from header.
@@ -50,8 +53,13 @@ async def verify_api_key(
             headers={"WWW-Authenticate": "ApiKey"},
         )
 
-    # TODO: In production, validate against stored API keys
-    # For now, accept any non-empty key
+    if settings.valid_api_keys and api_key not in settings.valid_api_keys:
+        logger.warning("Rejected invalid API key: %s...", api_key[:8])
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key",
+        )
+
     return api_key
 
 

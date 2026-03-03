@@ -311,7 +311,46 @@ pytest tests/test_dqops_checks.py -v
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
 | `ENCRYPTION_KEY` | Fernet key for credential encryption | (required) |
 | `API_KEY_HEADER` | Header name for API key auth | `X-API-Key` |
+| `VALID_API_KEYS` | Comma-separated list of accepted API keys. Empty = dev mode (any non-empty key accepted) | `[]` |
+| `RATE_LIMIT_DEFAULT` | Global rate limit for all endpoints | `100/minute` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins | `["*"]` |
 | `DEBUG` | Enable debug mode | `False` |
+
+## Production Deployment
+
+### API Key Authentication
+
+In development, `VALID_API_KEYS` is empty and any non-empty `X-API-Key` header is accepted. For production, set explicit keys:
+
+```env
+# On the DQ Platform VPS
+VALID_API_KEYS=my-secret-key-1,my-secret-key-2
+ENCRYPTION_KEY=<generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+CORS_ALLOWED_ORIGINS=https://your-mlg-domain.com
+RATE_LIMIT_DEFAULT=100/minute
+```
+
+Requests without a valid key receive `401` (missing) or `403` (invalid). Rejected keys are logged for auditing.
+
+### Connecting MLG to a Remote DQ Platform
+
+On the MLG server, set these environment variables to point at the DQ Platform VPS:
+
+```env
+DQOPS_API_URL=http://<vps-ip>:8000
+DQOPS_API_KEY=my-secret-key-1
+```
+
+MLG's `dqops-client.ts` automatically sends the key as an `X-API-Key` header on every request. No code changes are needed on the MLG side.
+
+### Checklist
+
+1. Generate and set `ENCRYPTION_KEY` (never reuse across environments)
+2. Set `VALID_API_KEYS` with at least one strong key
+3. Set `CORS_ALLOWED_ORIGINS` to your MLG domain (not `*`)
+4. Ensure the VPS firewall allows inbound traffic on the API port (default `8000`)
+5. Set `DQOPS_API_URL` and `DQOPS_API_KEY` on the MLG server
+6. Verify: `curl -H "X-API-Key: my-secret-key-1" http://<vps-ip>:8000/api/v1/checks` should return `200`
 
 ## Tech Stack
 

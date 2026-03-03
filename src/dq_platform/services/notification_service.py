@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.models.incident import Incident
@@ -61,14 +61,15 @@ class NotificationService:
         is_active: bool | None = None,
     ) -> tuple[list[NotificationChannel], int]:
         query = select(NotificationChannel)
-        count_query = select(NotificationChannel.id)
 
         if is_active is not None:
             query = query.where(NotificationChannel.is_active == is_active)
-            count_query = count_query.where(NotificationChannel.is_active == is_active)
 
+        count_query = select(func.count(NotificationChannel.id))
+        if is_active is not None:
+            count_query = count_query.where(NotificationChannel.is_active == is_active)
         count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
+        total = count_result.scalar() or 0
 
         query = query.offset(offset).limit(limit).order_by(NotificationChannel.created_at.desc())
         result = await self.db.execute(query)

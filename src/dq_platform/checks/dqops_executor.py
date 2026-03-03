@@ -1,5 +1,6 @@
 """DQOps check executor - combines sensors and rules to run checks."""
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,8 @@ from dq_platform.checks.rules import Severity, evaluate_rule
 from dq_platform.checks.sensors import get_sensor
 from dq_platform.connectors.base import BaseConnector
 from dq_platform.connectors.factory import ConnectorFactory
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -156,6 +159,7 @@ class DQOpsExecutor:
             return None
 
         except Exception:
+            logger.error("Sensor SQL execution failed", extra={"sql": sql}, exc_info=True)
             return None
 
         finally:
@@ -202,6 +206,7 @@ class DQOpsLocalExecutor:
             return None
 
         except Exception:
+            logger.error("Local sensor SQL execution failed", extra={"sql": sql}, exc_info=True)
             return None
 
 

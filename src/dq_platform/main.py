@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -25,8 +26,7 @@ from dq_platform.db.session import engine
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Initialize rate limiter with in-memory storage
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_default])
 
 
 @asynccontextmanager
@@ -51,9 +51,10 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Add rate limiter to app state and exception handler
+# Add rate limiter to app state, exception handler, and middleware
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_middleware(SlowAPIMiddleware)
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -111,7 +112,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -4,8 +4,6 @@
 # This runs the DQ Platform independently
 # MLG server connects to it via DQOPS_API_URL
 
-version: "3.8"
-
 services:
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -103,11 +101,19 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       DEBUG: "false"
     depends_on:
-      - api
-      - redis
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - dq-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A dq_platform.workers.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   beat:
     build:
@@ -123,11 +129,19 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       DEBUG: "false"
     depends_on:
-      - api
-      - redis
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - dq-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
 volumes:
   postgres_data:

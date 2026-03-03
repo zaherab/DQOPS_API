@@ -2,9 +2,10 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from dq_platform.api.deps import DimensionServiceDep
+from dq_platform.core.security import verify_api_key
 from dq_platform.odps.dimension_mapping import CATEGORY_TO_DIMENSION
 from dq_platform.schemas.dimension import (
     DimensionCheckDetail,
@@ -13,7 +14,7 @@ from dq_platform.schemas.dimension import (
     DimensionTrendResponse,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/scores", response_model=DimensionScoreResponse)

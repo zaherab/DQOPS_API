@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError
@@ -118,11 +119,11 @@ class ConnectionService:
         if connection_type:
             query = query.where(Connection.connection_type == connection_type)
 
-        # Get total count
-        count_result = await self.db.execute(
-            select(Connection.id).where(Connection.is_active == True)  # noqa: E712
-        )
-        total = len(count_result.all())
+        count_query = select(func.count(Connection.id)).where(Connection.is_active == True)  # noqa: E712
+        if connection_type:
+            count_query = count_query.where(Connection.connection_type == connection_type)
+        count_result = await self.db.execute(count_query)
+        total = count_result.scalar() or 0
 
         # Get paginated results
         query = query.offset(offset).limit(limit).order_by(Connection.created_at.desc())
@@ -190,7 +191,7 @@ class ConnectionService:
         connection = await self.get(connection_id)
         decrypted_config = decrypt_config(connection.config_encrypted)
         connector = get_connector(connection.connection_type, decrypted_config)
-        return connector.test_connection()
+        return await asyncio.to_thread(connector.test_connection)
 
     async def get_schemas(self, connection_id: uuid.UUID) -> list[str]:
         """Get list of schemas in the data source.
@@ -205,8 +206,11 @@ class ConnectionService:
         decrypted_config = decrypt_config(connection.config_encrypted)
         connector = get_connector(connection.connection_type, decrypted_config)
 
-        with connector:
-            return connector.get_schemas()
+        def _blocking() -> list[str]:
+            with connector:
+                return connector.get_schemas()
+
+        return await asyncio.to_thread(_blocking)
 
     async def get_tables(self, connection_id: uuid.UUID, schema: str) -> list[TableInfo]:
         """Get list of tables in a schema.
@@ -222,8 +226,11 @@ class ConnectionService:
         decrypted_config = decrypt_config(connection.config_encrypted)
         connector = get_connector(connection.connection_type, decrypted_config)
 
-        with connector:
-            return connector.get_tables(schema)
+        def _blocking() -> list[TableInfo]:
+            with connector:
+                return connector.get_tables(schema)
+
+        return await asyncio.to_thread(_blocking)
 
     async def get_columns(self, connection_id: uuid.UUID, schema: str, table: str) -> list[ColumnInfo]:
         """Get list of columns in a table.
@@ -240,5 +247,8 @@ class ConnectionService:
         decrypted_config = decrypt_config(connection.config_encrypted)
         connector = get_connector(connection.connection_type, decrypted_config)
 
-        with connector:
-            return connector.get_columns(schema, table)
+        def _blocking() -> list[ColumnInfo]:
+            with connector:
+                return connector.get_columns(schema, table)
+
+        return await asyncio.to_thread(_blocking)

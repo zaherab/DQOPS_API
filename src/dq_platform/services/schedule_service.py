@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 
 from croniter import croniter
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError, ValidationError
@@ -122,14 +122,14 @@ class ScheduleService:
             query = query.where(Schedule.is_active == is_active)
 
         # Get total count
-        count_query = select(Schedule.id)
+        count_query = select(func.count(Schedule.id))
         if check_id:
             count_query = count_query.where(Schedule.check_id == check_id)
         if is_active is not None:
             count_query = count_query.where(Schedule.is_active == is_active)
 
         count_result = await self.db.execute(count_query)
-        total = len(count_result.all())
+        total = count_result.scalar() or 0
 
         # Get paginated results
         query = query.offset(offset).limit(limit).order_by(Schedule.created_at.desc())

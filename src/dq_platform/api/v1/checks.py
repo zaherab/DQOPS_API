@@ -20,6 +20,7 @@ from dq_platform.checks.gx_registry import (
     get_check_description,
     is_column_level_check,
 )
+from dq_platform.core.security import verify_api_key
 from dq_platform.models.check import CheckMode, CheckTimeScale, CheckType
 from dq_platform.schemas.check import (
     BatchRunRequest,
@@ -35,7 +36,7 @@ from dq_platform.schemas.common import PaginatedResponse
 from dq_platform.services.check_service import CheckService
 from dq_platform.services.execution_service import ExecutionService
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_api_key)])
 
 
 @router.post("", response_model=CheckResponse, status_code=status.HTTP_201_CREATED)

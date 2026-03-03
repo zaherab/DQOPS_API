@@ -132,7 +132,7 @@ class BaseConnector(ABC):
         """
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.execute, sql, params)
 
     async def connect_async(self) -> None:
@@ -142,7 +142,7 @@ class BaseConnector(ABC):
         """
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.connect)
 
     async def disconnect_async(self) -> None:
@@ -152,7 +152,7 @@ class BaseConnector(ABC):
         """
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.disconnect)
 
     @abstractmethod
