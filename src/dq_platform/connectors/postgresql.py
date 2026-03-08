@@ -21,7 +21,7 @@ class PostgreSQLConnector(BaseConnector):
                 database=self.config.get("database"),
                 user=self.config.get("user"),
                 password=self.config.get("password"),
-                connect_timeout=self.config.get("connect_timeout", 10),
+                connect_timeout=self.config.get("connect_timeout", 30),
             )
         except psycopg2.Error as e:
             raise ConnectionError(f"Failed to connect to PostgreSQL: {e}")

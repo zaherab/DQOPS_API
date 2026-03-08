@@ -19,10 +19,12 @@ class OracleConnector(BaseConnector):
                 port=int(self.config.get("port", 1521)),
                 service_name=service_name,
             )
+            connect_timeout = int(self.config.get("connect_timeout", 30))
             self._connection = oracledb.connect(
                 user=self.config.get("user"),
                 password=self.config.get("password"),
                 dsn=dsn,
+                tcp_connect_timeout=connect_timeout,
             )
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Oracle: {e}")

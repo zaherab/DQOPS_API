@@ -13,10 +13,12 @@ class DatabricksConnector(BaseConnector):
         try:
             from databricks import sql
 
+            connect_timeout = int(self.config.get("connect_timeout", 30))
             self._connection = sql.connect(
                 server_hostname=self.config.get("server_hostname"),
                 http_path=self.config.get("http_path"),
                 access_token=self.config.get("access_token"),
+                _socket_timeout=connect_timeout,
             )
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Databricks: {e}")
