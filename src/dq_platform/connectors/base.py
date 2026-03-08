@@ -50,20 +50,67 @@ class BaseConnector(ABC):
 
         Args:
             config: Connection configuration (host, port, database, user, password, etc.)
+                    Supports a ``database_url`` or ``url`` key as a shorthand that is
+                    parsed into individual components automatically.
         """
         self.config = self._normalize_config(config)
         self._connection: Any = None
 
     @staticmethod
+    def _parse_database_url(url: str) -> dict[str, Any]:
+        """Parse a database URL into individual connection components.
+
+        Supports formats like:
+            postgresql://user:password@host:port/database?sslmode=require
+            postgresql+asyncpg://user:password@host:port/database
+        """
+        from urllib.parse import parse_qs, unquote, urlparse
+
+        parsed = urlparse(url)
+        result: dict[str, Any] = {}
+        if parsed.hostname:
+            result["host"] = parsed.hostname
+        if parsed.port:
+            result["port"] = parsed.port
+        if parsed.path and parsed.path.strip("/"):
+            result["database"] = parsed.path.strip("/")
+        if parsed.username:
+            result["user"] = unquote(parsed.username)
+        if parsed.password:
+            result["password"] = unquote(parsed.password)
+        # Handle ssl from query params
+        qs = parse_qs(parsed.query)
+        if qs.get("ssl", [None])[0] == "true" or qs.get("sslmode", [None])[0] in (
+            "require",
+            "verify-ca",
+            "verify-full",
+        ):
+            result["ssl"] = True
+        return result
+
+    @staticmethod
     def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
-        """Normalize config key aliases to canonical names."""
+        """Normalize config key aliases to canonical names.
+
+        If a ``database_url`` or ``url`` key is present, it is parsed first
+        and individual keys can still override the parsed values.
+        """
+        normalized = dict(config)
+
+        # Parse database_url / url if present
+        url = normalized.pop("database_url", None) or normalized.pop("url", None)
+        if url:
+            from_url = BaseConnector._parse_database_url(url)
+            # URL values are defaults; explicit keys take precedence
+            for key, value in from_url.items():
+                normalized.setdefault(key, value)
+
         aliases: dict[str, str] = {
             "username": "user",
             "hostname": "host",
             "dbname": "database",
             "db": "database",
         }
-        normalized = dict(config)
         for alias, canonical in aliases.items():
             if alias in normalized and canonical not in normalized:
                 normalized[canonical] = normalized.pop(alias)

@@ -1,10 +1,14 @@
 """Connection endpoints."""
 
+import asyncio
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Query, status
+from pydantic import BaseModel, Field
 
 from dq_platform.api.deps import APIKey, ConnectionServiceDep
+from dq_platform.connectors.factory import get_connector
 from dq_platform.models.connection import ConnectionType
 from dq_platform.schemas.common import PaginatedResponse, TestConnectionResponse
 from dq_platform.schemas.connection import (
@@ -16,6 +20,21 @@ from dq_platform.schemas.connection import (
 )
 
 router = APIRouter()
+
+
+class TestConnectionRequest(BaseModel):
+    """Schema for testing a connection with raw config (no saved connection required)."""
+
+    connection_type: ConnectionType = ConnectionType.POSTGRESQL
+    host: str | None = None
+    port: int | None = None
+    database: str | None = None
+    username: str | None = None
+    password: str | None = None
+    ssl: bool | None = None
+    database_url: str | None = Field(
+        None, description="Database URL — parsed into host/port/db/user/password automatically"
+    )
 
 
 @router.post("", response_model=ConnectionResponse, status_code=status.HTTP_201_CREATED)
@@ -94,6 +113,39 @@ async def delete_connection(
 ) -> None:
     """Delete a connection (soft delete)."""
     await service.delete(connection_id)
+
+
+@router.post("/test", response_model=TestConnectionResponse)
+async def test_connection_raw(
+    data: TestConnectionRequest,
+    api_key: APIKey,
+) -> TestConnectionResponse:
+    """Test a connection with raw config (no saved connection required).
+
+    Accepts either individual fields (host, port, etc.) or a single ``database_url``.
+    """
+    try:
+        config: dict[str, Any] = {}
+        if data.database_url:
+            config["database_url"] = data.database_url
+        if data.host:
+            config["host"] = data.host
+        if data.port:
+            config["port"] = data.port
+        if data.database:
+            config["database"] = data.database
+        if data.username:
+            config["username"] = data.username
+        if data.password:
+            config["password"] = data.password
+        if data.ssl is not None:
+            config["ssl"] = data.ssl
+
+        connector = get_connector(data.connection_type, config)
+        success = await asyncio.to_thread(connector.test_connection)
+        return TestConnectionResponse(success=success, message="Connection successful")
+    except Exception as e:
+        return TestConnectionResponse(success=False, message=str(e))
 
 
 @router.post("/{connection_id}/test", response_model=TestConnectionResponse)
