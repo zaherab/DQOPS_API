@@ -19,7 +19,7 @@ class RedshiftConnector(BaseConnector):
                 database=self.config.get("database"),
                 user=self.config.get("user"),
                 password=self.config.get("password"),
-                timeout=self.config.get("connect_timeout", 10),
+                timeout=self.config.get("connect_timeout", 30),
             )
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Redshift: {e}")

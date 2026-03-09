@@ -33,7 +33,7 @@ class SQLServerConnector(BaseConnector):
 
             self._connection = pyodbc.connect(
                 connection_string,
-                timeout=self.config.get("connect_timeout", 10),
+                timeout=self.config.get("connect_timeout", 30),
             )
         except pyodbc.Error as e:
             raise ConnectionError(f"Failed to connect to SQL Server: {e}")
