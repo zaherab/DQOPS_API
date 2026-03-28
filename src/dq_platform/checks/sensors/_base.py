@@ -289,7 +289,7 @@ def _list_to_sql_array(values: list[Any]) -> str:
 # Regex to match Python inline comments at the end of SQL lines.
 # Strips linter-directive comments (noqa, type:, pylint:, pragma) that are
 # never valid SQL. A bare "#" inside a regex string literal is left alone.
-_PYTHON_COMMENT_RE = re.compile(r"\s+#\s+(noqa|type:|pylint:|pragma)\b.*$", re.MULTILINE)
+_PYTHON_COMMENT_RE = re.compile(r"\s+#\s+(noqa\b|type:\s|pylint:\s|pragma\b).*$", re.MULTILINE)
 
 
 def _strip_python_comments(sql: str) -> str:
