@@ -51,7 +51,7 @@ class Connection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     # Relationships
-    checks: Mapped[list["Check"]] = relationship("Check", back_populates="connection", lazy="selectin")
+    checks: Mapped[list["Check"]] = relationship("Check", back_populates="connection", lazy="noload")
 
     @property
     def decrypted_config(self) -> dict[str, Any]:

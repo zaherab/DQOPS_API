@@ -47,6 +47,30 @@ async def get_dimension_mapping() -> list[DimensionMappingEntry]:
     ]
 
 
+@router.get("/trends", response_model=list[DimensionTrendResponse])
+async def get_all_dimension_trends(
+    service: DimensionServiceDep,
+    connection_id: UUID | None = None,
+    days: int = Query(30, ge=1, le=365),
+) -> list[DimensionTrendResponse]:
+    """Get daily score trend for all 8 ODPS dimensions in one request."""
+    return await service.get_all_dimension_trends(
+        connection_id=connection_id,
+        days=days,
+    )
+
+
+@router.get("/checks", response_model=list[DimensionCheckDetail])
+async def get_all_dimension_checks(
+    service: DimensionServiceDep,
+    connection_id: UUID | None = None,
+) -> list[DimensionCheckDetail]:
+    """Get all checks across all 8 ODPS dimensions in one request."""
+    return await service.get_all_dimension_checks(
+        connection_id=connection_id,
+    )
+
+
 @router.get("/{dimension}/trend", response_model=DimensionTrendResponse)
 async def get_dimension_trend(
     dimension: str,

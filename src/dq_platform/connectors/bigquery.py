@@ -1,5 +1,6 @@
 """BigQuery connector implementation."""
 
+import logging
 from typing import Any
 
 from google.cloud import bigquery
@@ -7,6 +8,8 @@ from google.oauth2 import service_account
 
 from dq_platform.api.errors import ConnectionError, ExecutionError
 from dq_platform.connectors.base import BaseConnector, ColumnInfo, TableInfo
+
+logger = logging.getLogger(__name__)
 
 
 class BigQueryConnector(BaseConnector):
@@ -39,7 +42,7 @@ class BigQueryConnector(BaseConnector):
             try:
                 self._connection.close()
             except Exception:
-                pass
+                logger.debug("Error closing connection", exc_info=True)
             finally:
                 self._connection = None
 

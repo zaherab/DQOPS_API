@@ -405,9 +405,9 @@ class Check(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     # Relationships
     connection: Mapped["Connection"] = relationship("Connection", back_populates="checks", lazy="joined")
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="check", lazy="selectin")
-    incidents: Mapped[list["Incident"]] = relationship("Incident", back_populates="check", lazy="selectin")
-    schedules: Mapped[list["Schedule"]] = relationship("Schedule", back_populates="check", lazy="selectin")
+    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="check", lazy="noload")
+    incidents: Mapped[list["Incident"]] = relationship("Incident", back_populates="check", lazy="noload")
+    schedules: Mapped[list["Schedule"]] = relationship("Schedule", back_populates="check", lazy="noload")
 
     def __repr__(self) -> str:
         return f"<Check(id={self.id}, name={self.name}, type={self.check_type})>"

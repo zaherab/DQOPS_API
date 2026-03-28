@@ -191,19 +191,26 @@ class ScheduleService:
         await self.db.delete(schedule)
         await self.db.flush()
 
-    async def get_due_schedules(self) -> list[Schedule]:
+    async def get_due_schedules(self, batch_size: int = 100) -> list[Schedule]:
         """Get schedules that are due for execution.
 
+        Args:
+            batch_size: Maximum number of schedules to return per call.
+
         Returns:
-            List of schedules with next_run_at <= now.
+            List of schedules with next_run_at <= now, oldest first.
         """
         now = datetime.now(UTC)
 
         result = await self.db.execute(
-            select(Schedule).where(
+            select(Schedule)
+            .where(
                 Schedule.is_active == True,  # noqa: E712
                 Schedule.next_run_at <= now,
             )
+            .order_by(Schedule.next_run_at.asc())
+            .limit(batch_size)
+            .with_for_update(skip_locked=True, of=Schedule)
         )
         return list(result.scalars().all())
 

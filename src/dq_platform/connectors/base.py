@@ -116,6 +116,16 @@ class BaseConnector(ABC):
                 normalized[canonical] = normalized.pop(alias)
             elif alias in normalized and canonical in normalized:
                 normalized.pop(alias)  # canonical takes precedence
+
+        # Validate host against SSRF if present
+        host = normalized.get("host")
+        if host:
+            from dq_platform.config import get_settings
+            from dq_platform.core.network_validation import validate_host
+
+            settings = get_settings()
+            validate_host(host, allow_private=settings.allow_private_network_connections)
+
         return normalized
 
     @abstractmethod

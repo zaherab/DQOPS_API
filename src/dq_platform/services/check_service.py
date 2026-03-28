@@ -1,7 +1,7 @@
 """Check service for managing data quality checks."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -9,23 +9,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError, ValidationError
-from dq_platform.checks import (
-    Severity,
-    run_dqops_check,
-)
+from dq_platform.checks import Severity
+from dq_platform.checks.check_runner import run_check
 from dq_platform.checks.dqops_checks import (
     DQOpsCheckType,
 )
 from dq_platform.checks.dqops_checks import (
     get_check as get_dqops_check_def,
 )
-from dq_platform.checks.dqops_executor import DQOpsExecutor
-from dq_platform.checks.gx_executor import run_gx_check
 from dq_platform.checks.gx_registry import is_column_level_check
-from dq_platform.checks.rules import RuleType, evaluate_rule
-from dq_platform.checks.sensors import get_sensor
 from dq_platform.models.check import Check, CheckMode, CheckTimeScale, CheckType
-from dq_platform.models.result import CheckResult
 from dq_platform.services.connection_service import ConnectionService
 
 
@@ -364,93 +357,22 @@ class CheckService:
     ) -> PreviewResult:
         """Internal method to execute a check.
 
-        Args:
-            check: Check to execute.
-            connection_config: Connection configuration.
-
-        Returns:
-            Execution result.
+        Delegates to the shared check_runner for actual execution logic.
         """
-        executed_at = datetime.now(UTC)
-
-        # Try DQOps-style execution first
         try:
-            dqops_check_type = DQOpsCheckType(check.check_type.value)
-            dqops_check_def = get_dqops_check_def(dqops_check_type)
-
-            # Build rule parameters
-            rule_params = {}
-            if check.rule_parameters:
-                # Extract highest severity threshold
-                for severity in ["fatal", "error", "warning"]:
-                    if severity in check.rule_parameters and check.rule_parameters[severity]:
-                        rule_params.update(check.rule_parameters[severity])
-                        rule_params["severity"] = severity
-                        break
-            if check.parameters:
-                rule_params.update(check.parameters)
-
-            # Anomaly: inject historical values into rule_params
-            if dqops_check_def.rule_type == RuleType.ANOMALY_PERCENTILE:
-                rule_params["_historical_values"] = await self._get_historical_values(check)
-
-            # Cross-source: dual-connection execution (early return)
-            if "reference_connection_id" in (check.parameters or {}):
-                return await self._execute_cross_source_check(check, connection_config, dqops_check_def, rule_params)
-
-            # Execute DQOps check
-            result = await run_dqops_check(
-                check_type=dqops_check_type,
-                connection_config=connection_config,
-                schema_name=check.target_schema or "public",
-                table_name=check.target_table,
-                column_name=check.target_column,
-                rule_params=rule_params,
-            )
-
+            result = await run_check(check, connection_config, db=self.db)
             return PreviewResult(
                 check_type=check.check_type.value,
                 check_name=check.name,
-                severity=result.severity,
+                severity=Severity(result.severity),
                 passed=result.passed,
                 sensor_value=result.sensor_value,
                 expected=result.expected,
                 actual=result.actual,
                 message=result.message,
                 executed_sql=result.executed_sql,
-                executed_at=executed_at,
+                executed_at=result.executed_at,
             )
-
-        except (ValueError, KeyError):
-            # Fall back to Great Expectations execution
-            pass
-
-        # Execute via Great Expectations
-        try:
-            gx_result = await run_gx_check(
-                check_type=check.check_type,
-                connection_config=connection_config,
-                schema_name=check.target_schema,
-                table_name=check.target_table,
-                column_name=check.target_column,
-                parameters=check.parameters,
-            )
-
-            severity = Severity.PASSED if gx_result["success"] else Severity.ERROR
-
-            return PreviewResult(
-                check_type=check.check_type.value,
-                check_name=check.name,
-                severity=severity,
-                passed=gx_result["success"],
-                sensor_value=gx_result.get("observed_value"),
-                expected=check.parameters,
-                actual=gx_result.get("observed_value"),
-                message=gx_result.get("result", {}).get("comment", "Check executed"),
-                executed_sql=None,
-                executed_at=executed_at,
-            )
-
         except Exception as e:
             return PreviewResult(
                 check_type=check.check_type.value,
@@ -460,146 +382,10 @@ class CheckService:
                 sensor_value=None,
                 expected=check.parameters,
                 actual=None,
-                message=f"Execution failed: {str(e)}",
+                message=f"Execution failed: {e!s}",
                 executed_sql=None,
-                executed_at=executed_at,
+                executed_at=datetime.now(UTC),
             )
-
-    async def _get_historical_values(self, check: Check, days: int = 90) -> list[float]:
-        """Get historical sensor values for anomaly detection.
-
-        Args:
-            check: Check to get history for.
-            days: Number of days of history to retrieve.
-
-        Returns:
-            List of historical actual_value floats.
-        """
-        cutoff = datetime.now(UTC) - timedelta(days=days)
-        result = await self.db.execute(
-            select(CheckResult.actual_value)
-            .where(
-                CheckResult.check_id == check.id,
-                CheckResult.executed_at >= cutoff,
-                CheckResult.actual_value.isnot(None),
-            )
-            .order_by(CheckResult.executed_at.desc())
-            .limit(1000)
-        )
-        return [row[0] for row in result.all()]
-
-    async def _execute_cross_source_check(
-        self,
-        check: Check,
-        connection_config: dict[str, Any],
-        dqops_check_def: Any,
-        rule_params: dict[str, Any],
-    ) -> PreviewResult:
-        """Execute a cross-source comparison check.
-
-        Runs the same sensor on two different connections and compares results.
-
-        Args:
-            check: Check to execute.
-            connection_config: Source connection configuration.
-            dqops_check_def: DQOps check definition.
-            rule_params: Rule parameters.
-
-        Returns:
-            Preview result with comparison outcome.
-        """
-        executed_at = datetime.now(UTC)
-        params = check.parameters or {}
-
-        # Get reference connection
-        ref_conn_id = params.get("reference_connection_id")
-        if not ref_conn_id:
-            return PreviewResult(
-                check_type=check.check_type.value,
-                check_name=check.name,
-                severity=Severity.ERROR,
-                passed=False,
-                sensor_value=None,
-                expected="reference_connection_id in parameters",
-                actual=None,
-                message="Cross-source check requires reference_connection_id parameter",
-                executed_sql=None,
-                executed_at=executed_at,
-            )
-
-        conn_service = ConnectionService(self.db)
-        ref_connection = await conn_service.get_connection(UUID(ref_conn_id))
-        if not ref_connection:
-            return PreviewResult(
-                check_type=check.check_type.value,
-                check_name=check.name,
-                severity=Severity.ERROR,
-                passed=False,
-                sensor_value=None,
-                expected="valid reference connection",
-                actual=None,
-                message=f"Reference connection {ref_conn_id} not found",
-                executed_sql=None,
-                executed_at=executed_at,
-            )
-
-        ref_config = ref_connection.decrypted_config
-
-        # Get sensor and render SQL for both connections
-        sensor = get_sensor(dqops_check_def.sensor_type)
-
-        source_params = {
-            "schema_name": check.target_schema or "public",
-            "table_name": check.target_table,
-        }
-        if sensor.is_column_level and check.target_column:
-            source_params["column_name"] = check.target_column
-
-        ref_params = {
-            "schema_name": params.get("reference_schema", check.target_schema or "public"),
-            "table_name": params.get("reference_table", check.target_table),
-        }
-        if sensor.is_column_level:
-            ref_params["column_name"] = params.get("reference_column", check.target_column)
-
-        if sensor.default_params:
-            source_params.update(sensor.default_params)
-            ref_params.update(sensor.default_params)
-
-        source_sql = sensor.render(source_params)
-        ref_sql = sensor.render(ref_params)
-
-        # Execute on both connections
-        executor = DQOpsExecutor()
-        source_value = await executor._execute_sensor_sql(connection_config, source_sql)
-        ref_value = await executor._execute_sensor_sql(ref_config, ref_sql)
-
-        # Compute match percent
-        if source_value is None or ref_value is None:
-            match_percent = None
-        elif source_value == 0 and ref_value == 0:
-            match_percent = 100.0
-        elif max(abs(source_value), abs(ref_value)) == 0:
-            match_percent = 0.0
-        else:
-            match_percent = min(abs(source_value), abs(ref_value)) / max(abs(source_value), abs(ref_value)) * 100.0
-
-        # Evaluate rule with match_percent as the sensor value
-        rule_result = evaluate_rule(dqops_check_def.rule_type, match_percent, rule_params)
-
-        combined_sql = f"-- Source:\n{source_sql}\n-- Reference:\n{ref_sql}"
-        return PreviewResult(
-            check_type=check.check_type.value,
-            check_name=check.name,
-            severity=rule_result.severity,
-            passed=rule_result.passed,
-            sensor_value=match_percent,
-            expected=rule_result.expected,
-            actual=rule_result.actual,
-            message=f"Source={source_value}, Reference={ref_value}. {rule_result.message}",
-            executed_sql=combined_sql,
-            executed_at=executed_at,
-        )
 
     async def execute_check(
         self,

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check
 from dq_platform.checks.rules import Severity, evaluate_rule
-from dq_platform.checks.sensors import get_sensor
+from dq_platform.checks.sensors import QUOTE_CHARS, get_sensor
 from dq_platform.connectors.base import BaseConnector
 from dq_platform.connectors.factory import ConnectorFactory
 
@@ -51,6 +51,7 @@ class DQOpsExecutor:
         column_name: str | None = None,
         rule_params: dict[str, Any] | None = None,
         partition_filter: str | None = None,
+        quote_char: str | None = None,
     ) -> CheckExecutionResult:
         """Execute a DQOps check.
 
@@ -92,8 +93,13 @@ class DQOpsExecutor:
         if rule_params:
             sensor_params.update(rule_params)
 
+        # Determine quote character from connection type if not explicitly provided
+        if quote_char is None:
+            conn_type = connection_config.get("type", "")
+            quote_char = QUOTE_CHARS.get(conn_type, '"')
+
         # Render SQL
-        sql = sensor.render(sensor_params)
+        sql = sensor.render(sensor_params, quote_char=quote_char)
 
         # Execute sensor SQL
         sensor_value = await self._execute_sensor_sql(
@@ -160,7 +166,7 @@ class DQOpsExecutor:
 
         except Exception:
             logger.error("Sensor SQL execution failed", extra={"sql": sql}, exc_info=True)
-            return None
+            raise
 
         finally:
             if own_connector and connector:
@@ -219,6 +225,7 @@ async def run_dqops_check(
     rule_params: dict[str, Any] | None = None,
     partition_filter: str | None = None,
     connector: BaseConnector | None = None,
+    quote_char: str | None = None,
 ) -> CheckExecutionResult:
     """Convenience function to run a DQOps check.
 
@@ -244,4 +251,5 @@ async def run_dqops_check(
         column_name=column_name,
         rule_params=rule_params,
         partition_filter=partition_filter,
+        quote_char=quote_char,
     )

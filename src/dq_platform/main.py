@@ -35,7 +35,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Startup
     setup_logging()
     logger.info("Application starting up", extra={"version": "0.1.0"})
-    app.state.redis = redis.from_url(settings.redis_url)  # type: ignore[no-untyped-call]
+
+    # Trigger settings validation (logs warnings for insecure defaults)
+    get_settings()
+
+    app.state.redis = redis.from_url(
+        settings.redis_url,
+        socket_keepalive=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True,
+    )  # type: ignore[no-untyped-call]
     yield
     # Shutdown
     await app.state.redis.close()
