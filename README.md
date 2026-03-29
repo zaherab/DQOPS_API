@@ -11,6 +11,7 @@ DQ Platform provides automated data quality checks, anomaly detection, and incid
 - **171 DQOps-Style Checks** - Table and column-level validations using sensor + rule architecture
 - **76+ Sensors** - Jinja2 SQL templates for measuring data characteristics
 - **15 Rule Types** - Threshold, percentage, change detection, and comparison rules
+- **Human-Readable Results** - Category-aware message formatting (e.g., "Data is 27.6 days stale" instead of "Value 2385014 > 86400") with description-based fallback for any new check type
 - **Multi-Severity Thresholds** - warning/error/fatal thresholds per check
 - **Check Modes** - Profiling, monitoring, and partitioned check execution
 - **Multi-Source Support** - PostgreSQL, MySQL, BigQuery, Snowflake, SQL Server, Redshift, DuckDB, Oracle, Databricks

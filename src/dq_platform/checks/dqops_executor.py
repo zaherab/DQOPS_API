@@ -115,7 +115,13 @@ class DQOpsExecutor:
             final_rule_params.update(rule_params)
 
         # Evaluate rule
-        rule_result = evaluate_rule(check.rule_type, sensor_value, final_rule_params)
+        rule_result = evaluate_rule(
+            check.rule_type,
+            sensor_value,
+            final_rule_params,
+            category=check.category,
+            description=check.description,
+        )
 
         return CheckExecutionResult(
             check_type=check_type.value,
