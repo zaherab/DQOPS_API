@@ -10,15 +10,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from dq_platform.checks.rules import Severity
 from dq_platform.models.check import CheckMode, CheckTimeScale, CheckType
 
-# Pattern for safe SQL identifiers: allows alphanumeric, underscore, dollar, hyphen, dot (for schema.table)
-IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_$.\-]*$")
+# Pattern for safe SQL identifiers
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_$\-]*$")
+# Schema identifiers may contain dots (catalog.schema)
+_SCHEMA_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_$.\-]*$")
 
 
-def _validate_identifier(value: str | None, field_name: str) -> str | None:
+def _validate_identifier(value: str | None, field_name: str, *, allow_dot: bool = False) -> str | None:
     """Validate a SQL identifier against injection patterns."""
     if value is None:
         return value
-    if not IDENTIFIER_PATTERN.match(value):
+    pattern = _SCHEMA_IDENTIFIER_RE if allow_dot else _IDENTIFIER_RE
+    if not pattern.match(value):
         raise ValueError(f"{field_name} contains invalid characters: {value!r}")
     return value
 
@@ -71,7 +74,7 @@ class CheckCreate(BaseModel):
     @field_validator("target_schema")
     @classmethod
     def validate_target_schema(cls, v: str | None) -> str | None:
-        return _validate_identifier(v, "target_schema")
+        return _validate_identifier(v, "target_schema", allow_dot=True)
 
     @field_validator("target_table")
     @classmethod
@@ -106,7 +109,7 @@ class CheckUpdate(BaseModel):
     @field_validator("target_schema")
     @classmethod
     def validate_target_schema(cls, v: str | None) -> str | None:
-        return _validate_identifier(v, "target_schema")
+        return _validate_identifier(v, "target_schema", allow_dot=True)
 
     @field_validator("target_table")
     @classmethod
@@ -201,7 +204,7 @@ class CheckPreviewRequest(BaseModel):
     @field_validator("target_schema")
     @classmethod
     def validate_target_schema(cls, v: str | None) -> str | None:
-        return _validate_identifier(v, "target_schema")
+        return _validate_identifier(v, "target_schema", allow_dot=True)
 
     @field_validator("target_table")
     @classmethod

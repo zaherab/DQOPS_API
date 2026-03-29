@@ -254,6 +254,26 @@ def _validate_partition_filter(partition_filter: str) -> str:
     for pattern in dangerous_patterns:
         if pattern in pf_lower:
             raise ValueError(f"Partition filter contains disallowed pattern: {pattern!r}")
+
+    # Block SQL keywords that have no place in a WHERE partition clause.
+    # Use word boundaries to avoid false positives (e.g. "execution_date").
+    _dangerous_keywords = (
+        "union",
+        "into",
+        "exec",
+        "execute",
+        "drop",
+        "alter",
+        "create",
+        "insert",
+        "update",
+        "delete",
+        "truncate",
+    )
+    for kw in _dangerous_keywords:
+        if re.search(rf"\b{kw}\b", pf_lower):
+            raise ValueError(f"Partition filter contains disallowed keyword: {kw!r}")
+
     # Check for unbalanced quotes
     if pf_lower.count("'") % 2 != 0:
         raise ValueError("Partition filter contains unbalanced single quotes")
