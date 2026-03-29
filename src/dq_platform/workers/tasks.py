@@ -232,7 +232,7 @@ async def _handle_failure(
             Incident.check_id == check.id,
             Incident.status.in_([IncidentStatus.OPEN, IncidentStatus.ACKNOWLEDGED]),
         )
-        .with_for_update()
+        .with_for_update(of=Incident)
     )
     existing_incident = result.scalar_one_or_none()
 
@@ -361,8 +361,9 @@ async def _cleanup_stuck_jobs_async() -> dict[str, Any]:
 
         cleaned = 0
         for job in stuck_jobs:
+            original_status = job.status
             job.status = JobStatus.FAILED
-            if job.status == JobStatus.RUNNING:
+            if original_status == JobStatus.RUNNING:
                 job.error_message = f"Job exceeded timeout of {timeout_minutes} minutes"
             else:
                 job.error_message = "Job stuck in pending - no worker picked it up within 1 hour"
