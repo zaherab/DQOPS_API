@@ -349,3 +349,80 @@ class TestRealSensorNoqaStripping:
         assert "# noqa" not in sql, f"Sensor {sensor_type.value} still has # noqa in SQL"
         assert "# type:" not in sql
         assert "# pylint:" not in sql
+
+
+# ---------------------------------------------------------------------------
+# Partition filter keyword validation
+# ---------------------------------------------------------------------------
+class TestPartitionFilterKeywords:
+    def test_union_blocked(self) -> None:
+        from dq_platform.checks.sensors._base import _validate_partition_filter
+
+        with pytest.raises(ValueError, match="union"):
+            _validate_partition_filter("date_col = 1 UNION SELECT 1")
+
+    def test_drop_blocked(self) -> None:
+        from dq_platform.checks.sensors._base import _validate_partition_filter
+
+        with pytest.raises(ValueError, match="drop"):
+            _validate_partition_filter("x = 1 DROP TABLE users")
+
+    def test_exec_blocked(self) -> None:
+        from dq_platform.checks.sensors._base import _validate_partition_filter
+
+        with pytest.raises(ValueError, match="exec"):
+            _validate_partition_filter("EXEC xp_cmdshell")
+
+    @pytest.mark.parametrize(
+        "safe_filter",
+        [
+            "execution_date >= '2024-01-01'",
+            "updated_at > '2024-01-01'",
+            "created_at BETWEEN '2024-01-01' AND '2024-12-31'",
+            "deleted = false",
+        ],
+    )
+    def test_no_false_positives(self, safe_filter: str) -> None:
+        from dq_platform.checks.sensors._base import _validate_partition_filter
+
+        result = _validate_partition_filter(safe_filter)
+        assert result == safe_filter
+
+
+# ---------------------------------------------------------------------------
+# Identifier validation (schema allows dots, table/column do not)
+# ---------------------------------------------------------------------------
+class TestIdentifierValidation:
+    def test_target_table_rejects_dots(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        with pytest.raises(ValueError, match="target_table"):
+            _validate_identifier("schema.table", "target_table")
+
+    def test_target_column_rejects_dots(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        with pytest.raises(ValueError, match="target_column"):
+            _validate_identifier("table.column", "target_column")
+
+    def test_target_schema_allows_dots(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        result = _validate_identifier("catalog.schema", "target_schema", allow_dot=True)
+        assert result == "catalog.schema"
+
+    def test_normal_identifier_passes(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        assert _validate_identifier("my_table", "target_table") == "my_table"
+
+    def test_none_passes(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        assert _validate_identifier(None, "target_table") is None
+
+    def test_injection_attempt_rejected(self) -> None:
+        from dq_platform.schemas.check import _validate_identifier
+
+        with pytest.raises(ValueError):
+            _validate_identifier("users; DROP TABLE--", "target_table")
