@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from sqlalchemy import func, select
@@ -14,6 +15,8 @@ from dq_platform.connectors.base import ColumnInfo, TableInfo
 from dq_platform.connectors.factory import get_connector
 from dq_platform.core.encryption import decrypt_config, encrypt_config
 from dq_platform.models.connection import Connection, ConnectionType
+
+_connector_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="db-connector")
 
 
 class ConnectionService:
@@ -191,7 +194,8 @@ class ConnectionService:
         connection = await self.get(connection_id)
         decrypted_config = decrypt_config(connection.config_encrypted)
         connector = get_connector(connection.connection_type, decrypted_config)
-        return await asyncio.to_thread(connector.test_connection)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_connector_executor, connector.test_connection)
 
     async def get_schemas(self, connection_id: uuid.UUID) -> list[str]:
         """Get list of schemas in the data source.
@@ -210,7 +214,8 @@ class ConnectionService:
             with connector:
                 return connector.get_schemas()
 
-        return await asyncio.to_thread(_blocking)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_connector_executor, _blocking)
 
     async def get_tables(self, connection_id: uuid.UUID, schema: str) -> list[TableInfo]:
         """Get list of tables in a schema.
@@ -230,7 +235,8 @@ class ConnectionService:
             with connector:
                 return connector.get_tables(schema)
 
-        return await asyncio.to_thread(_blocking)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_connector_executor, _blocking)
 
     async def get_columns(self, connection_id: uuid.UUID, schema: str, table: str) -> list[ColumnInfo]:
         """Get list of columns in a table.
@@ -251,4 +257,5 @@ class ConnectionService:
             with connector:
                 return connector.get_columns(schema, table)
 
-        return await asyncio.to_thread(_blocking)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_connector_executor, _blocking)

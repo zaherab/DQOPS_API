@@ -1,13 +1,29 @@
 """Check schemas."""
 
+import re
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dq_platform.checks.rules import Severity
 from dq_platform.models.check import CheckMode, CheckTimeScale, CheckType
+
+# Pattern for safe SQL identifiers
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_$\-]*$")
+# Schema identifiers may contain dots (catalog.schema)
+_SCHEMA_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_$.\-]*$")
+
+
+def _validate_identifier(value: str | None, field_name: str, *, allow_dot: bool = False) -> str | None:
+    """Validate a SQL identifier against injection patterns."""
+    if value is None:
+        return value
+    pattern = _SCHEMA_IDENTIFIER_RE if allow_dot else _IDENTIFIER_RE
+    if not pattern.match(value):
+        raise ValueError(f"{field_name} contains invalid characters: {value!r}")
+    return value
 
 
 class SeverityThreshold(BaseModel):
@@ -55,6 +71,26 @@ class CheckCreate(BaseModel):
     rule_parameters: RuleParameters | None = None
     metadata: dict[str, Any] | None = None
 
+    @field_validator("target_schema")
+    @classmethod
+    def validate_target_schema(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_schema", allow_dot=True)
+
+    @field_validator("target_table")
+    @classmethod
+    def validate_target_table(cls, v: str) -> str:
+        return _validate_identifier(v, "target_table")  # type: ignore[return-value]
+
+    @field_validator("target_column")
+    @classmethod
+    def validate_target_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_column")
+
+    @field_validator("partition_by_column")
+    @classmethod
+    def validate_partition_by_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "partition_by_column")
+
 
 class CheckUpdate(BaseModel):
     """Schema for updating a check."""
@@ -69,6 +105,26 @@ class CheckUpdate(BaseModel):
     rule_parameters: RuleParameters | None = None
     metadata: dict[str, Any] | None = None
     is_active: bool | None = None
+
+    @field_validator("target_schema")
+    @classmethod
+    def validate_target_schema(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_schema", allow_dot=True)
+
+    @field_validator("target_table")
+    @classmethod
+    def validate_target_table(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_table")
+
+    @field_validator("target_column")
+    @classmethod
+    def validate_target_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_column")
+
+    @field_validator("partition_by_column")
+    @classmethod
+    def validate_partition_by_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "partition_by_column")
 
 
 class CheckResponse(BaseModel):
@@ -144,3 +200,18 @@ class CheckPreviewRequest(BaseModel):
     target_column: str | None = Field(None, max_length=255)
     parameters: dict[str, Any] = Field(default_factory=dict)
     rule_parameters: RuleParameters | None = None
+
+    @field_validator("target_schema")
+    @classmethod
+    def validate_target_schema(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_schema", allow_dot=True)
+
+    @field_validator("target_table")
+    @classmethod
+    def validate_target_table(cls, v: str) -> str:
+        return _validate_identifier(v, "target_table")  # type: ignore[return-value]
+
+    @field_validator("target_column")
+    @classmethod
+    def validate_target_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_column")

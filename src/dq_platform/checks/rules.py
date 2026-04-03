@@ -583,6 +583,184 @@ def _anomaly_percentile_rule(sensor_value: float | None, params: dict[str, Any])
 
 
 # =============================================================================
+# Human-readable message formatting
+# =============================================================================
+
+
+def _humanize_duration(seconds: float) -> str:
+    """Convert seconds to human-readable duration."""
+    if seconds < 60:
+        return f"{seconds:.0f} seconds"
+    if seconds < 3600:
+        return f"{seconds / 60:.1f} minutes"
+    if seconds < 86400:
+        return f"{seconds / 3600:.1f} hours"
+    return f"{seconds / 86400:.1f} days"
+
+
+def _parse_threshold(expected: str) -> float | None:
+    """Extract numeric threshold from expected strings like '>= 86400' or '<= 5%'."""
+    import re
+
+    m = re.search(r"[\d.]+", str(expected))
+    return float(m.group()) if m else None
+
+
+def _fmt_number(value: float) -> str:
+    """Format a number: integers get commas, floats get 2 decimal places."""
+    if value == int(value):
+        return f"{int(value):,}"
+    return f"{value:,.2f}"
+
+
+def _fmt_percent(value: float) -> str:
+    """Format a percentage value."""
+    return f"{value:.2f}%"
+
+
+def _humanize_message(
+    result: RuleResult,
+    category: str,
+    description: str | None = None,
+) -> RuleResult:
+    """Rewrite rule message to be human-readable based on check category and description.
+
+    Uses category for known transformations, falls back to description-based
+    formatting for unknown categories. This ensures any new check type
+    automatically gets a readable message.
+    """
+    actual = result.actual
+    if actual is None:
+        return result  # Keep NULL messages as-is
+
+    threshold = _parse_threshold(str(result.expected))
+    status = "passed" if result.passed else "failed"
+
+    # ── Timeliness: seconds → human duration ─────────────────────────────
+    if category == "timeliness":
+        human_actual = _humanize_duration(float(actual))
+        human_threshold = _humanize_duration(threshold) if threshold else str(result.expected)
+        label = "fresh" if result.passed else "stale"
+        result.message = f"Data is {human_actual} {label} (threshold: {human_threshold})"
+
+    # ── Volume: row/record counts with commas ────────────────────────────
+    elif category == "volume":
+        result.message = f"{_fmt_number(float(actual))} rows (expected: {result.expected})"
+
+    # ── Nulls/Completeness: null percentage ──────────────────────────────
+    elif category == "nulls":
+        result.message = f"{_fmt_percent(float(actual))} null values (limit: {result.expected})"
+
+    # ── Uniqueness: duplicate percentage/count ───────────────────────────
+    elif category == "uniqueness":
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} duplicates (limit: {result.expected})"
+        else:
+            result.message = f"{_fmt_number(float(actual))} duplicates (limit: {result.expected})"
+
+    # ── Numeric/Statistical: value ranges ────────────────────────────────
+    elif category in ("numeric", "statistical"):
+        result.message = f"Value {_fmt_number(float(actual))} is {'within' if result.passed else 'outside'} expected range ({result.expected})"
+
+    # ── Text: length and content checks ──────────────────────────────────
+    elif category == "text":
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} of text values {status} check (target: {result.expected})"
+        else:
+            result.message = f"Text length {_fmt_number(float(actual))} is {'within' if result.passed else 'outside'} limit ({result.expected})"
+
+    # ── Patterns/Format: email, UUID, IP, phone, etc. ────────────────────
+    elif category in ("patterns", "pii"):
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} of values {'match' if result.passed else 'fail'} format check (target: {result.expected})"
+        else:
+            result.message = f"{_fmt_number(float(actual))} values {'match' if result.passed else 'fail'} format check (limit: {result.expected})"
+
+    # ── Boolean: true/false percentages ──────────────────────────────────
+    elif category == "boolean":
+        result.message = f"{_fmt_percent(float(actual))} of values are {'true' if 'true' in str(result.expected).lower() else 'false'} (target: {result.expected})"
+
+    # ── DateTime: date range and future dates ────────────────────────────
+    elif category == "datetime":
+        result.message = f"{_fmt_percent(float(actual))} of dates {status} validation (target: {result.expected})"
+
+    # ── Geographic: lat/lon validation ───────────────────────────────────
+    elif category == "geographic":
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} of coordinates are valid (target: {result.expected})"
+        else:
+            result.message = f"{_fmt_number(float(actual))} invalid coordinates found (limit: {result.expected})"
+
+    # ── Datatype detection ───────────────────────────────────────────────
+    elif category == "datatype":
+        result.message = (
+            f"Detected datatype {'matches' if result.passed else 'changed from'} expected ({result.expected})"
+        )
+
+    # ── Change detection: percentage changes ─────────────────────────────
+    elif category in ("change", "change_detection"):
+        result.message = f"{_fmt_percent(float(actual))} change detected (limit: {result.expected})"
+
+    # ── Anomaly detection: keep IQR message (already readable) ───────────
+    elif category == "anomaly":
+        pass  # IQR bounds message from rule is already clear
+
+    # ── Comparison: cross-source match checks ────────────────────────────
+    elif category == "comparison":
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} match rate across sources (target: {result.expected})"
+        else:
+            result.message = f"Value {_fmt_number(float(actual))} {'matches' if result.passed else 'differs from'} reference ({result.expected})"
+
+    # ── Referential integrity ────────────────────────────────────────────
+    elif category == "referential":
+        if "%" in str(result.expected):
+            result.message = (
+                f"{_fmt_percent(float(actual))} of foreign keys found in reference (target: {result.expected})"
+            )
+        else:
+            result.message = f"{_fmt_number(float(actual))} orphaned foreign keys (limit: {result.expected})"
+
+    # ── Accepted values / domain checks ──────────────────────────────────
+    elif category == "accepted_values":
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} of values in accepted set (target: {result.expected})"
+        else:
+            result.message = f"{_fmt_number(float(actual))} accepted values in use (expected: {result.expected})"
+
+    # ── Schema: structure checks ─────────────────────────────────────────
+    elif category == "schema":
+        if result.passed:
+            result.message = f"Schema check passed ({_fmt_number(float(actual))} matches expected)"
+        else:
+            result.message = f"Schema changed — {result.message}"
+
+    # ── Availability ─────────────────────────────────────────────────────
+    elif category == "availability":
+        result.message = "Table is available" if result.passed else "Table is unavailable or unreachable"
+
+    # ── Custom SQL: keep original (we can't know what it measures) ───────
+    elif category == "custom_sql":
+        pass  # Keep the generic message
+
+    # ── Dynamic fallback: use check description ──────────────────────────
+    else:
+        if description:
+            # Strip "Check that " prefix from description for cleaner message
+            desc = description
+            if desc.lower().startswith("check that "):
+                desc = desc[11:]
+            if desc.lower().startswith("check "):
+                desc = desc[6:]
+            qualifier = "passed" if result.passed else "failed"
+            result.message = (
+                f"{desc.capitalize()}: {qualifier} (actual: {_fmt_number(float(actual))}, expected: {result.expected})"
+            )
+
+    return result
+
+
+# =============================================================================
 # Rule Registry
 # =============================================================================
 
@@ -633,6 +811,8 @@ def evaluate_rule(
     rule_type: RuleType,
     sensor_value: float | None,
     params: dict[str, Any],
+    category: str | None = None,
+    description: str | None = None,
 ) -> RuleResult:
     """Evaluate a sensor value against a rule.
 
@@ -640,12 +820,17 @@ def evaluate_rule(
         rule_type: The type of rule to apply.
         sensor_value: The value from the sensor.
         params: Rule parameters (thresholds, etc.).
+        category: Check category for human-readable message formatting.
+        description: Check description for dynamic fallback messages.
 
     Returns:
         The rule evaluation result.
     """
     rule_func = get_rule(rule_type)
-    return rule_func(sensor_value, params)
+    result = rule_func(sensor_value, params)
+    if category:
+        result = _humanize_message(result, category, description)
+    return result
 
 
 def list_rules() -> list[RuleType]:

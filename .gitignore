@@ -145,6 +145,7 @@ redis_data/
 
 # Docker
 .docker/
+docker-compose.override.yml
 
 # Temporary files
 *.tmp

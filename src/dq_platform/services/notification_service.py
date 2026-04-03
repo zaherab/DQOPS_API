@@ -131,6 +131,10 @@ class NotificationService:
                     headers = channel.config.get("headers", {})
                     headers.setdefault("Content-Type", "application/json")
 
+                    from dq_platform.config import get_settings
+                    from dq_platform.core.network_validation import validate_url
+
+                    validate_url(url, allow_private=get_settings().allow_private_network_connections)
                     resp = await client.post(url, json=payload, headers=headers)
                     resp.raise_for_status()
                     sent += 1
@@ -163,6 +167,10 @@ class NotificationService:
         try:
             headers = channel.config.get("headers", {})
             headers.setdefault("Content-Type", "application/json")
+            from dq_platform.config import get_settings
+            from dq_platform.core.network_validation import validate_url
+
+            validate_url(url, allow_private=get_settings().allow_private_network_connections)
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()

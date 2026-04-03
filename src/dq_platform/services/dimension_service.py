@@ -240,6 +240,115 @@ class DimensionService:
 
         return DimensionTrendResponse(dimension=dimension, snapshots=snapshots)
 
+    async def get_all_dimension_trends(
+        self,
+        connection_id: uuid.UUID | None = None,
+        days: int = 30,
+    ) -> list[DimensionTrendResponse]:
+        """Get daily score trend for all 8 ODPS dimensions in a single DB round-trip."""
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+
+        checks = await self._get_checks(connection_id)
+        if not checks:
+            return [DimensionTrendResponse(dimension=dim.value, snapshots=[]) for dim in ALL_DIMENSIONS]
+
+        # Map each check to its dimension
+        check_to_dim: dict[uuid.UUID, ODPSDimension] = {}
+        for check in checks:
+            cat = _check_type_to_category(check.check_type.value)
+            dim = CATEGORY_TO_DIMENSION.get(cat) if cat else None
+            if dim is not None:
+                check_to_dim[check.id] = dim
+
+        mapped_ids = list(check_to_dim.keys())
+        if not mapped_ids:
+            return [DimensionTrendResponse(dimension=dim.value, snapshots=[]) for dim in ALL_DIMENSIONS]
+
+        # Single query: all results across all dimensions within date range
+        stmt = (
+            select(CheckResult)
+            .where(
+                CheckResult.check_id.in_(mapped_ids),
+                CheckResult.executed_at >= cutoff,
+            )
+            .order_by(CheckResult.executed_at.asc())
+        )
+        result = await self.db.execute(stmt)
+        results = list(result.scalars().all())
+
+        # Group by (dimension, date)
+        by_dim_date: dict[ODPSDimension, dict[str, list[CheckResult]]] = defaultdict(lambda: defaultdict(list))
+        for r in results:
+            dim = check_to_dim.get(r.check_id)
+            if dim is not None:
+                by_dim_date[dim][r.executed_at.strftime("%Y-%m-%d")].append(r)
+
+        responses: list[DimensionTrendResponse] = []
+        for dim in ALL_DIMENSIONS:
+            date_map = by_dim_date.get(dim, {})
+            snapshots: list[DimensionDailySnapshot] = []
+            for date_str in sorted(date_map):
+                day_results = date_map[date_str]
+                passed = warning = error = fatal = 0
+                for r in day_results:
+                    sev = r.severity
+                    sev_str = sev.value if hasattr(sev, "value") else str(sev)
+                    if sev_str == "passed":
+                        passed += 1
+                    elif sev_str == "warning":
+                        warning += 1
+                    elif sev_str == "error":
+                        error += 1
+                    elif sev_str == "fatal":
+                        fatal += 1
+                snapshots.append(
+                    DimensionDailySnapshot(
+                        date=date_str, score=_score_from_severity_counts(passed, warning, error, fatal)
+                    )
+                )
+            responses.append(DimensionTrendResponse(dimension=dim.value, snapshots=snapshots))
+
+        return responses
+
+    async def get_all_dimension_checks(
+        self,
+        connection_id: uuid.UUID | None = None,
+    ) -> list[DimensionCheckDetail]:
+        """Get all checks for all 8 ODPS dimensions in a single DB round-trip."""
+        checks = await self._get_checks(connection_id)
+        if not checks:
+            return []
+
+        check_ids = [c.id for c in checks]
+        latest_results = await self._get_latest_results(check_ids)
+        result_by_check = {r.check_id: r for r in latest_results}
+
+        details: list[DimensionCheckDetail] = []
+        for check in checks:
+            cat = _check_type_to_category(check.check_type.value)
+            dim = CATEGORY_TO_DIMENSION.get(cat) if cat else None
+            if dim is None:
+                continue
+            result = result_by_check.get(check.id)
+            sev_str = None
+            if result and result.severity:
+                sev_str = result.severity.value if hasattr(result.severity, "value") else str(result.severity)
+            details.append(
+                DimensionCheckDetail(
+                    check_id=check.id,
+                    check_name=check.name,
+                    check_type=check.check_type.value,
+                    category=cat or "",
+                    dimension=dim.value,
+                    target_table=check.target_table,
+                    target_column=check.target_column,
+                    latest_passed=result.passed if result else None,
+                    latest_severity=sev_str,
+                    latest_executed_at=(result.executed_at if result else None),
+                )
+            )
+        return details
+
     async def get_dimension_checks(
         self,
         dimension: str,

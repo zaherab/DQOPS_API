@@ -7,7 +7,7 @@ name = "dq-platform"
 version = "0.1.0"
 description = "API-first data quality monitoring platform"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     # Web framework
     "fastapi>=0.109.0",
@@ -97,14 +97,14 @@ exclude_lines = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 ignore = ["UP042", "E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 

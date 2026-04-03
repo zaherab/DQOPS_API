@@ -58,15 +58,16 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: dq-platform-api
-    command: uvicorn dq_platform.main:app --host 0.0.0.0 --port 8000 --workers 4
+    command: uvicorn dq_platform.main:app --host 0.0.0.0 --port 9000 --workers 4
     ports:
-      - "8000:8000"
+      - "9000:9000"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALLOW_PRIVATE_NETWORK_CONNECTIONS: "true"
       DEBUG: "false"
     depends_on:
       postgres:
@@ -77,11 +78,11 @@ services:
         condition: service_completed_successfully
     restart: on-failure
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     networks:
       - dq-platform-network
 
@@ -97,6 +98,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALLOW_PRIVATE_NETWORK_CONNECTIONS: "true"
       DEBUG: "false"
     depends_on:
       postgres:
@@ -127,6 +129,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ALLOW_PRIVATE_NETWORK_CONNECTIONS: "true"
       DEBUG: "false"
     depends_on:
       postgres:

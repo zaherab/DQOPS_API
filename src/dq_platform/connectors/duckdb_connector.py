@@ -1,9 +1,12 @@
 """DuckDB connector implementation."""
 
+import logging
 from typing import Any
 
 from dq_platform.api.errors import ConnectionError, ExecutionError
 from dq_platform.connectors.base import BaseConnector, ColumnInfo, TableInfo
+
+logger = logging.getLogger(__name__)
 
 
 class DuckDBConnector(BaseConnector):
@@ -23,7 +26,7 @@ class DuckDBConnector(BaseConnector):
             try:
                 self._connection.close()
             except Exception:
-                pass
+                logger.debug("Error closing connection", exc_info=True)
             finally:
                 self._connection = None
 
