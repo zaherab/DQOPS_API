@@ -49,7 +49,7 @@ dependencies = [
 
     # Production hardening
     "slowapi>=0.1.9",
-    "python-json-logger>=2.0.7",
+    "python-json-logger>=4.1.0",
 ]
 
 [project.optional-dependencies]
