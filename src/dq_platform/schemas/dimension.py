@@ -17,6 +17,9 @@ class DimensionScore(BaseModel):
     warning_count: int
     error_count: int
     fatal_count: int
+    # Checks that are registered but have no result yet.
+    # = check_count - (passed + warning + error + fatal)
+    not_run_count: int = 0
 
 
 class DimensionScoreResponse(BaseModel):

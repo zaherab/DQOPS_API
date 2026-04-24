@@ -48,6 +48,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 ROW_COUNT_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -79,6 +80,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 ROW_COUNT_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -110,6 +112,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 # =============================================================================
@@ -171,6 +174,7 @@ SELECT
     EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX({{ timestamp_column }})))::BIGINT as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
 """,
+    required_params=["timestamp_column"],
 )
 
 # =============================================================================
@@ -236,6 +240,7 @@ FROM current_count c
 CROSS JOIN reference_count r
 """,
     default_params={"reference_schema": "public"},
+    required_params=["reference_table"],
 )
 
 SUM_MATCH_PERCENT_SENSOR = Sensor(
@@ -263,6 +268,7 @@ FROM current_sum c
 CROSS JOIN reference_sum r
 """,
     default_params={"reference_schema": "public", "reference_column": "id"},
+    required_params=["reference_table"],
 )
 
 MIN_MATCH_PERCENT_SENSOR = Sensor(
@@ -291,6 +297,7 @@ FROM current_min c
 CROSS JOIN reference_min r
 """,
     default_params={"reference_schema": "public", "reference_column": "id"},
+    required_params=["reference_table"],
 )
 
 MAX_MATCH_PERCENT_SENSOR = Sensor(
@@ -319,6 +326,7 @@ FROM current_max c
 CROSS JOIN reference_max r
 """,
     default_params={"reference_schema": "public", "reference_column": "id"},
+    required_params=["reference_table"],
 )
 
 AVERAGE_MATCH_PERCENT_SENSOR = Sensor(
@@ -347,6 +355,7 @@ FROM current_avg c
 CROSS JOIN reference_avg r
 """,
     default_params={"reference_schema": "public", "reference_column": "id", "tolerance_percent": 0.01},
+    required_params=["reference_table"],
 )
 
 NOT_NULL_COUNT_MATCH_PERCENT_SENSOR = Sensor(
@@ -374,6 +383,7 @@ FROM current_count c
 CROSS JOIN reference_count r
 """,
     default_params={"reference_schema": "public", "reference_column": "id"},
+    required_params=["reference_table"],
 )
 
 # =============================================================================
@@ -485,6 +495,7 @@ FROM {{ schema_name }}.{{ table_name }}
 WHERE {{ partition_filter }}
 {% endif %}
 """,
+    required_params=["sql_expression"],
 )
 
 SQL_INVALID_RECORD_COUNT_SENSOR = Sensor(

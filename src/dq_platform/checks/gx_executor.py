@@ -429,10 +429,6 @@ async def run_gx_check(
     Returns:
         Check result dictionary.
     """
-    # This is a placeholder implementation
-    # In production, this would execute the actual GX check
-    return {
-        "success": True,
-        "observed_value": None,
-        "result": {"comment": "GX check execution placeholder"},
-    }
+    raise NotImplementedError(
+        f"GX executor not implemented for check type '{check_type.value}'. Use DQOps-style checks instead."
+    )

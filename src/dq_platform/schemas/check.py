@@ -158,6 +158,10 @@ class CheckTypeInfo(BaseModel):
     description: str
     is_column_level: bool
     category: str | None = None
+    # Exposed so external orchestrators (e.g. MLG) can generate correctly-
+    # shaped rule_parameters without hardcoding per-check-type logic.
+    rule_type: str | None = None
+    default_params: dict[str, Any] | None = None
 
 
 class RunCheckRequest(BaseModel):

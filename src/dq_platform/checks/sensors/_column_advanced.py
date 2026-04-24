@@ -40,6 +40,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 NULLS_PERCENT_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -75,6 +76,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 NULLS_PERCENT_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -110,6 +112,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 # Distinct count change sensors
@@ -142,6 +145,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 DISTINCT_COUNT_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -173,6 +177,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 DISTINCT_COUNT_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -204,6 +209,7 @@ SELECT
 FROM current_count c
 CROSS JOIN previous_count p
 """,
+    required_params=["check_id"],
 )
 
 # Distinct percent change sensors
@@ -240,6 +246,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 DISTINCT_PERCENT_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -275,6 +282,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 DISTINCT_PERCENT_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -310,6 +318,7 @@ SELECT
 FROM current_pct c
 CROSS JOIN previous_pct p
 """,
+    required_params=["check_id"],
 )
 
 # Mean change sensors
@@ -342,6 +351,7 @@ SELECT
 FROM current_mean c
 CROSS JOIN previous_mean p
 """,
+    required_params=["check_id"],
 )
 
 MEAN_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -373,6 +383,7 @@ SELECT
 FROM current_mean c
 CROSS JOIN previous_mean p
 """,
+    required_params=["check_id"],
 )
 
 MEAN_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -404,6 +415,7 @@ SELECT
 FROM current_mean c
 CROSS JOIN previous_mean p
 """,
+    required_params=["check_id"],
 )
 
 # Median change sensors
@@ -436,6 +448,7 @@ SELECT
 FROM current_median c
 CROSS JOIN previous_median p
 """,
+    required_params=["check_id"],
 )
 
 MEDIAN_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -467,6 +480,7 @@ SELECT
 FROM current_median c
 CROSS JOIN previous_median p
 """,
+    required_params=["check_id"],
 )
 
 MEDIAN_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -498,6 +512,7 @@ SELECT
 FROM current_median c
 CROSS JOIN previous_median p
 """,
+    required_params=["check_id"],
 )
 
 # Sum change sensors
@@ -530,6 +545,7 @@ SELECT
 FROM current_sum c
 CROSS JOIN previous_sum p
 """,
+    required_params=["check_id"],
 )
 
 SUM_CHANGE_7_DAYS_SENSOR = Sensor(
@@ -561,6 +577,7 @@ SELECT
 FROM current_sum c
 CROSS JOIN previous_sum p
 """,
+    required_params=["check_id"],
 )
 
 SUM_CHANGE_30_DAYS_SENSOR = Sensor(
@@ -592,6 +609,7 @@ SELECT
 FROM current_sum c
 CROSS JOIN previous_sum p
 """,
+    required_params=["check_id"],
 )
 
 # =============================================================================

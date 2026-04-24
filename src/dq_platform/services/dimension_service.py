@@ -45,11 +45,15 @@ def _score_from_severity_counts(
     warning: int,
     error: int,
     fatal: int,
-) -> float:
-    """Compute a 0-100 score from severity counts using weighted penalties."""
+) -> float | None:
+    """Compute a 0-100 score from severity counts using weighted penalties.
+
+    Returns None when no check has executed yet (total == 0) — the dimension
+    is unassessed, not failing. Callers treat None as "not_assessed".
+    """
     total = passed + warning + error + fatal
     if total == 0:
-        return 0.0
+        return None
 
     penalties = (
         SEVERITY_WEIGHTS["passed"] * passed
@@ -136,6 +140,7 @@ class DimensionService:
                         warning_count=0,
                         error_count=0,
                         fatal_count=0,
+                        not_run_count=0,
                     )
                 )
                 continue
@@ -157,7 +162,11 @@ class DimensionService:
                     fatal += 1
 
             score = _score_from_severity_counts(passed, warning, error, fatal)
-            assessed_scores.append(score)
+            # score is None when no check in this dimension has a result yet.
+            # Leave it out of the overall average so unrun dimensions don't
+            # drag it down (same treatment as count==0 above).
+            if score is not None:
+                assessed_scores.append(score)
 
             dimension_scores.append(
                 DimensionScore(
@@ -169,6 +178,7 @@ class DimensionService:
                     warning_count=warning,
                     error_count=error,
                     fatal_count=fatal,
+                    not_run_count=count - (passed + warning + error + fatal),
                 )
             )
 

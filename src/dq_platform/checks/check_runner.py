@@ -52,53 +52,61 @@ async def run_check(
     """
     executed_at = datetime.now(UTC)
 
-    # Try DQOps-style execution first
+    # Resolve the check definition. Only an unknown check type falls back to
+    # GX — any error beyond this point (sensor render, SQL execution, rule
+    # evaluation) is a real execution error and must propagate so the job's
+    # error_message reflects the actual cause, not a misleading "GX not
+    # implemented" from the fallback path.
     try:
         dqops_check_type = DQOpsCheckType(check.check_type.value)
         dqops_check_def = get_dqops_check_def(dqops_check_type)
-
-        # Build rule parameters
-        rule_params = _build_rule_params(check)
-
-        # Anomaly: inject historical values
-        if dqops_check_def.rule_type == RuleType.ANOMALY_PERCENTILE and db is not None:
-            rule_params["_historical_values"] = await _get_historical_values(db, check)
-
-        # Cross-source: dual-connection execution
-        if "reference_connection_id" in (check.parameters or {}):
-            return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db)
-
-        # Determine quote char from connection type
-        conn_type = connection_config.get("type", "")
-        quote_char = QUOTE_CHARS.get(conn_type, '"')
-
-        # Execute DQOps check
-        result = await run_dqops_check(
-            check_type=dqops_check_type,
-            connection_config=connection_config,
-            schema_name=check.target_schema or "public",
-            table_name=check.target_table,
-            column_name=check.target_column,
-            rule_params=rule_params,
-            quote_char=quote_char,
-        )
-
-        return CheckRunResult(
-            passed=result.passed,
-            severity=result.severity.value,
-            sensor_value=result.sensor_value,
-            expected=result.expected,
-            actual=result.actual,
-            message=result.message,
-            executed_sql=result.executed_sql,
-            executed_at=executed_at,
-        )
-
     except (ValueError, KeyError):
-        # Fall back to Great Expectations execution
-        pass
+        return await _run_gx_fallback(check, connection_config, executed_at)
 
-    # Execute via Great Expectations
+    # Build rule parameters
+    rule_params = _build_rule_params(check)
+
+    # Anomaly: inject historical values
+    if dqops_check_def.rule_type == RuleType.ANOMALY_PERCENTILE and db is not None:
+        rule_params["_historical_values"] = await _get_historical_values(db, check)
+
+    # Cross-source: dual-connection execution
+    if "reference_connection_id" in (check.parameters or {}):
+        return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db)
+
+    # Determine quote char from connection type
+    conn_type = connection_config.get("type", "")
+    quote_char = QUOTE_CHARS.get(conn_type, '"')
+
+    # Execute DQOps check
+    result = await run_dqops_check(
+        check_type=dqops_check_type,
+        connection_config=connection_config,
+        schema_name=check.target_schema or "public",
+        table_name=check.target_table,
+        column_name=check.target_column,
+        rule_params=rule_params,
+        quote_char=quote_char,
+    )
+
+    return CheckRunResult(
+        passed=result.passed,
+        severity=result.severity.value,
+        sensor_value=result.sensor_value,
+        expected=result.expected,
+        actual=result.actual,
+        message=result.message,
+        executed_sql=result.executed_sql,
+        executed_at=executed_at,
+    )
+
+
+async def _run_gx_fallback(
+    check: Check,
+    connection_config: dict[str, Any],
+    executed_at: datetime,
+) -> CheckRunResult:
+    """Fallback execution path for check types not in the DQOps registry."""
     gx_result = await run_gx_check(
         check_type=check.check_type,
         connection_config=connection_config,

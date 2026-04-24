@@ -128,6 +128,8 @@ async def list_check_types(
                 description=check.description,
                 is_column_level=check.is_column_level,
                 category=check.category,
+                rule_type=check.rule_type.value if check.rule_type else None,
+                default_params=check.default_params or None,
             )
         )
 
