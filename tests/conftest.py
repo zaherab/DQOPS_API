@@ -176,11 +176,19 @@ def _bootstrap_test_db() -> None:
 
 
 def get_test_settings() -> Settings:
-    """Get test settings."""
+    """Get test settings.
+
+    `allow_private_network_connections=True` so `validate_url` doesn't do
+    a DNS lookup on test fixture URLs (e.g. `hooks.example.com`) — inside
+    the container DNS often doesn't resolve those, which made the
+    webhook-test endpoint return `{success: false}` for a reason that
+    had nothing to do with the test's intent.
+    """
     return Settings(
         database_url=TEST_DATABASE_URL,
         encryption_key="test-encryption-key-32-bytes-long",
         debug=True,
+        allow_private_network_connections=True,
     )
 
 
@@ -319,7 +327,18 @@ def sync_client(async_engine) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = get_test_settings
 
-    with TestClient(app, headers={"X-API-Key": "test-key"}) as tc:
+    # raise_server_exceptions=False: make TestClient behave like a real
+    # HTTP client — a 500 is returned for unhandled exceptions instead of
+    # being re-raised into the test. Our `BaseHTTPMiddleware` subclasses
+    # (RequestIdMiddleware, SecurityHeadersMiddleware) don't route app
+    # exceptions through FastAPI's registered `@app.exception_handler`s
+    # the way a pure ASGI middleware would, so the default re-raise
+    # behavior hides the registered generic-500 handler from tests.
+    with TestClient(
+        app,
+        headers={"X-API-Key": "test-key"},
+        raise_server_exceptions=False,
+    ) as tc:
         yield tc
 
     app.dependency_overrides.clear()

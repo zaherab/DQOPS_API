@@ -23,6 +23,7 @@ def service() -> CheckService:
     db.add = MagicMock()
     db.flush = AsyncMock()
     db.commit = AsyncMock()
+    db.refresh = AsyncMock()
     return CheckService(db=db)
 
 

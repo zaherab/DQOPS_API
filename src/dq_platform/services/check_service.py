@@ -318,6 +318,9 @@ class CheckService:
         )
 
         await self.db.flush()
+        # Populate server-set columns (e.g. `updated_at`) so response
+        # serialization doesn't lazy-load outside the async context.
+        await self.db.refresh(check)
         return check
 
     async def delete_check(self, check_id: UUID) -> bool:

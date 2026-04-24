@@ -133,24 +133,28 @@ async def list_check_types(
             )
         )
 
-    # Add legacy Great Expectations checks not yet in DQOps format
-    existing_types = {c.name for c in dqops_checks}
-    for check_type in CheckType:
-        if check_type.value not in existing_types:
-            try:
-                is_col_level = is_column_level_check(check_type)
-                description = get_check_description(check_type)
-                check_types.append(
-                    CheckTypeInfo(
-                        type=check_type.value,
-                        description=description,
-                        is_column_level=is_col_level,
-                        category=None,
+    # Add legacy Great Expectations checks not yet in DQOps format.
+    # Skip when a category filter is active — GX-only checks have no
+    # category, so including them would leak unrelated results into a
+    # filtered response.
+    if not category:
+        existing_types = {c.name for c in dqops_checks}
+        for check_type in CheckType:
+            if check_type.value not in existing_types:
+                try:
+                    is_col_level = is_column_level_check(check_type)
+                    description = get_check_description(check_type)
+                    check_types.append(
+                        CheckTypeInfo(
+                            type=check_type.value,
+                            description=description,
+                            is_column_level=is_col_level,
+                            category=None,
+                        )
                     )
-                )
-            except ValueError:
-                # Skip if not in GX registry
-                pass
+                except ValueError:
+                    # Skip if not in GX registry
+                    pass
 
     return check_types
 
@@ -308,7 +312,11 @@ async def delete_check(
         raise NotFoundError("Check", str(check_id))
 
 
-@router.post("/{check_id}/run", response_model=dict[str, Any])
+@router.post(
+    "/{check_id}/run",
+    response_model=dict[str, Any],
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def run_check(
     check_id: UUID,
     request: RunCheckRequest | None = None,
@@ -316,7 +324,9 @@ async def run_check(
 ) -> dict[str, Any]:
     """Run a check asynchronously.
 
-    Returns a job ID that can be used to track execution.
+    Returns a job ID that can be used to track execution. 202 Accepted is
+    the correct status for dispatching async work — the job is queued but
+    not yet complete.
     """
     request = request or RunCheckRequest()
     execution_service = ExecutionService(db)
