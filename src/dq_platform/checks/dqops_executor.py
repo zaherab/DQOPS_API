@@ -28,6 +28,7 @@ class CheckExecutionResult:
     actual: Any
     message: str
     executed_sql: str
+    rows_scanned: int | None = None
 
 
 class DQOpsExecutor:
@@ -107,6 +108,18 @@ class DQOpsExecutor:
             sql=sql,
         )
 
+        # Capture rows_scanned by running a paired COUNT(*) on the target
+        # table with the same partition filter. Cheap for most engines
+        # (one aggregate query), and gives a consistent count-of-rows
+        # denominator across every sensor type.
+        rows_scanned = await self._count_rows(
+            connection_config=connection_config,
+            schema_name=schema_name,
+            table_name=table_name,
+            partition_filter=partition_filter,
+            quote_char=quote_char,
+        )
+
         # Build rule parameters
         final_rule_params = {}
         if check.default_params:
@@ -121,6 +134,7 @@ class DQOpsExecutor:
             final_rule_params,
             category=check.category,
             description=check.description,
+            sensor_type=check.sensor_type.value,
         )
 
         return CheckExecutionResult(
@@ -132,6 +146,7 @@ class DQOpsExecutor:
             actual=rule_result.actual,
             message=rule_result.message,
             executed_sql=sql,
+            rows_scanned=rows_scanned,
         )
 
     async def _execute_sensor_sql(
@@ -177,6 +192,32 @@ class DQOpsExecutor:
         finally:
             if own_connector and connector:
                 await connector.disconnect_async()
+
+    async def _count_rows(
+        self,
+        connection_config: dict[str, Any],
+        schema_name: str,
+        table_name: str,
+        partition_filter: str | None,
+        quote_char: str,
+    ) -> int | None:
+        """Return row count of the target table (with partition filter if any).
+
+        Best-effort: returns None on any failure so a COUNT(*) hiccup never
+        fails the check itself. Used to populate rows_scanned on results.
+        """
+        q = quote_char
+        where = f" WHERE {partition_filter}" if partition_filter else ""
+        sql = f"SELECT COUNT(*) AS sensor_value FROM {q}{schema_name}{q}.{q}{table_name}{q}{where}"
+        try:
+            value = await self._execute_sensor_sql(
+                connection_config=connection_config,
+                sql=sql,
+            )
+            return int(value) if value is not None else None
+        except Exception:
+            logger.warning("rows_scanned count query failed", extra={"sql": sql})
+            return None
 
 
 class DQOpsLocalExecutor:

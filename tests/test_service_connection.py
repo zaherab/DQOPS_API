@@ -210,6 +210,25 @@ class TestConnectionService:
         assert mock_connection.is_active is False
         mock_db.flush.assert_called_once()
 
+    async def test_delete_cascades_to_checks(self, service, mock_db):
+        """delete() must deactivate all active checks on the connection."""
+        connection_id = uuid4()
+        mock_connection = MagicMock(spec=Connection)
+        mock_connection.is_active = True
+
+        with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
+            await service.delete(connection_id)
+
+        # db.execute called exactly once with an UPDATE statement
+        # targeting checks, scoped to this connection_id.
+        assert mock_db.execute.await_count == 1
+        stmt = mock_db.execute.await_args.args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "UPDATE checks" in compiled
+        assert "is_active" in compiled
+        # SQLAlchemy renders UUIDs without dashes under literal_binds.
+        assert connection_id.hex in compiled
+
     async def test_test_connection_success(self, service, mock_db):
         """Test test_connection() with successful connection."""
         connection_id = uuid4()

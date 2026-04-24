@@ -1,5 +1,6 @@
 """Unified check execution logic shared between API preview and Celery worker paths."""
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -30,6 +31,8 @@ class CheckRunResult:
     message: str
     executed_sql: str | None
     executed_at: datetime
+    execution_time_ms: int | None = None
+    rows_scanned: int | None = None
 
 
 async def run_check(
@@ -51,6 +54,7 @@ async def run_check(
         Check execution result.
     """
     executed_at = datetime.now(UTC)
+    t0 = time.perf_counter()
 
     # Resolve the check definition. Only an unknown check type falls back to
     # GX — any error beyond this point (sensor render, SQL execution, rule
@@ -61,7 +65,7 @@ async def run_check(
         dqops_check_type = DQOpsCheckType(check.check_type.value)
         dqops_check_def = get_dqops_check_def(dqops_check_type)
     except (ValueError, KeyError):
-        return await _run_gx_fallback(check, connection_config, executed_at)
+        return await _run_gx_fallback(check, connection_config, executed_at, t0)
 
     # Build rule parameters
     rule_params = _build_rule_params(check)
@@ -72,7 +76,7 @@ async def run_check(
 
     # Cross-source: dual-connection execution
     if "reference_connection_id" in (check.parameters or {}):
-        return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db)
+        return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db, t0)
 
     # Determine quote char from connection type
     conn_type = connection_config.get("type", "")
@@ -98,6 +102,8 @@ async def run_check(
         message=result.message,
         executed_sql=result.executed_sql,
         executed_at=executed_at,
+        execution_time_ms=int((time.perf_counter() - t0) * 1000),
+        rows_scanned=result.rows_scanned,
     )
 
 
@@ -105,6 +111,7 @@ async def _run_gx_fallback(
     check: Check,
     connection_config: dict[str, Any],
     executed_at: datetime,
+    t0: float,
 ) -> CheckRunResult:
     """Fallback execution path for check types not in the DQOps registry."""
     gx_result = await run_gx_check(
@@ -127,6 +134,7 @@ async def _run_gx_fallback(
         message=gx_result.get("result", {}).get("comment", "Check executed"),
         executed_sql=None,
         executed_at=executed_at,
+        execution_time_ms=int((time.perf_counter() - t0) * 1000),
     )
 
 
@@ -167,6 +175,7 @@ async def _run_cross_source(
     rule_params: dict[str, Any],
     executed_at: datetime,
     db: AsyncSession | None,
+    t0: float,
 ) -> CheckRunResult:
     """Run cross-source comparison check."""
     from uuid import UUID
@@ -186,6 +195,7 @@ async def _run_cross_source(
             message="Cross-source check requires a database session",
             executed_sql=None,
             executed_at=executed_at,
+            execution_time_ms=int((time.perf_counter() - t0) * 1000),
         )
 
     conn_service = ConnectionService(db)
@@ -200,6 +210,7 @@ async def _run_cross_source(
             message=f"Reference connection {ref_conn_id} not found",
             executed_sql=None,
             executed_at=executed_at,
+            execution_time_ms=int((time.perf_counter() - t0) * 1000),
         )
 
     ref_config = ref_connection.decrypted_config
@@ -254,4 +265,5 @@ async def _run_cross_source(
         message=f"Source={source_value}, Reference={ref_value}. {rule_result.message}",
         executed_sql=f"-- Source:\n{source_sql}\n-- Reference:\n{ref_sql}",
         executed_at=executed_at,
+        execution_time_ms=int((time.perf_counter() - t0) * 1000),
     )

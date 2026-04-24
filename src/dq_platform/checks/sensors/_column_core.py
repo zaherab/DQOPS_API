@@ -87,7 +87,7 @@ WHERE {{ partition_filter }}
 
 DISTINCT_PERCENT_SENSOR = Sensor(
     name=SensorType.DISTINCT_PERCENT,
-    description="Percentage of distinct values in the column",
+    description="Percentage of distinct values in the column (among non-null rows)",
     is_column_level=True,
     template="""
 SELECT
@@ -96,28 +96,30 @@ SELECT
         ELSE (COUNT(DISTINCT {{ column_name }})::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
+WHERE {{ column_name }} IS NOT NULL
 {% if partition_filter %}
-WHERE {{ partition_filter }}
+  AND {{ partition_filter }}
 {% endif %}
 """,
 )
 
 DUPLICATE_COUNT_SENSOR = Sensor(
     name=SensorType.DUPLICATE_COUNT,
-    description="Count of duplicate values in the column",
+    description="Count of duplicate values in the column (excluding nulls)",
     is_column_level=True,
     template="""
 SELECT COUNT(*) - COUNT(DISTINCT {{ column_name }}) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
+WHERE {{ column_name }} IS NOT NULL
 {% if partition_filter %}
-WHERE {{ partition_filter }}
+  AND {{ partition_filter }}
 {% endif %}
 """,
 )
 
 DUPLICATE_PERCENT_SENSOR = Sensor(
     name=SensorType.DUPLICATE_PERCENT,
-    description="Percentage of duplicate values in the column",
+    description="Percentage of duplicate values in the column (among non-null rows)",
     is_column_level=True,
     template="""
 SELECT
@@ -126,8 +128,9 @@ SELECT
         ELSE ((COUNT(*) - COUNT(DISTINCT {{ column_name }}))::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
+WHERE {{ column_name }} IS NOT NULL
 {% if partition_filter %}
-WHERE {{ partition_filter }}
+  AND {{ partition_filter }}
 {% endif %}
 """,
 )

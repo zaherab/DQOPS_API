@@ -139,6 +139,8 @@ async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
                 actual=execution_result.get("actual"),
                 message=execution_result.get("message"),
                 executed_sql=execution_result.get("executed_sql"),
+                execution_time_ms=execution_result.get("execution_time_ms"),
+                rows_scanned=execution_result.get("rows_scanned"),
             )
 
             # Create/update incident if failed
@@ -206,6 +208,8 @@ async def _run_check_execution(
         "message": result.message,
         "executed_sql": result.executed_sql,
         "executed_at": result.executed_at.isoformat(),
+        "execution_time_ms": result.execution_time_ms,
+        "rows_scanned": result.rows_scanned,
     }
 
 

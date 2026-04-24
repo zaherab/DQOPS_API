@@ -185,6 +185,10 @@ class ExecutionService:
     async def submit_job(self, job_id: uuid.UUID) -> str:
         """Submit a job to the Celery queue.
 
+        Commits the Job row before enqueueing so a fast worker can't pick up
+        the task before the row is visible. Without this, batch runs race and
+        a fraction of jobs end up stuck pending with celery_task_id = NULL.
+
         Args:
             job_id: Job UUID.
 
@@ -193,13 +197,14 @@ class ExecutionService:
         """
         from dq_platform.workers.tasks import execute_check
 
-        # Submit to Celery
+        # Ensure the Job row is durably visible to the worker before enqueue.
+        await self.db.commit()
+
         task = execute_check.delay(str(job_id))
 
-        # Update job with task ID
         job = await self.get_job(job_id)
         task_id: str = task.id
         job.celery_task_id = task_id
-        await self.db.flush()
+        await self.db.commit()
 
         return task_id

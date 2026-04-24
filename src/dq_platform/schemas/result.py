@@ -21,6 +21,7 @@ class ResultResponse(BaseModel):
     actual_value: float | None
     expected_value: float | None
     passed: bool
+    severity: str
     execution_time_ms: int | None
     rows_scanned: int | None
     result_details: dict[str, Any] | None

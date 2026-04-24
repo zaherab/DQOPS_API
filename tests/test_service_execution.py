@@ -243,4 +243,6 @@ class TestExecutionService:
 
         assert result == "celery-task-123"
         assert mock_job.celery_task_id == "celery-task-123"
-        mock_db.flush.assert_called_once()
+        # Job row is committed before .delay() (so the worker sees it),
+        # then committed again after celery_task_id is set.
+        assert mock_db.commit.call_count == 2
