@@ -30,7 +30,7 @@ class TestIncidentAPI:
             ),
         )
         db_session.add(conn)
-        await db_session.flush()
+        await db_session.commit()
         return conn
 
     @pytest.fixture
@@ -45,7 +45,7 @@ class TestIncidentAPI:
             target_column="email",
         )
         db_session.add(check)
-        await db_session.flush()
+        await db_session.commit()
         return check
 
     @pytest.fixture
@@ -64,7 +64,7 @@ class TestIncidentAPI:
             failure_count=1,
         )
         db_session.add(incident)
-        await db_session.flush()
+        await db_session.commit()
         return incident
 
     def test_list_incidents(self, sync_client: TestClient, incident):

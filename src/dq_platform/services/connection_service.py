@@ -168,6 +168,10 @@ class ConnectionService:
             connection.metadata_ = metadata_
 
         await self.db.flush()
+        # Refresh to populate server-set columns (e.g. `updated_at` from
+        # server_onupdate=func.now()). Without this, response serialization
+        # lazy-loads the attribute outside async context and fails.
+        await self.db.refresh(connection)
         return connection
 
     async def delete(self, connection_id: uuid.UUID) -> None:

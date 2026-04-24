@@ -11,6 +11,7 @@ from dq_platform.api.errors import NotFoundError, ValidationError
 from dq_platform.models.check import Check
 from dq_platform.models.schedule import Schedule
 from dq_platform.services.schedule_service import ScheduleService
+from tests.conftest import mock_count_result, mock_scalars_result
 
 
 class TestScheduleService:
@@ -142,13 +143,7 @@ class TestScheduleService:
         check_id = uuid4()
         mock_schedules = [MagicMock(spec=Schedule) for _ in range(5)]
 
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(i,) for i in range(5)]
-
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_schedules
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(5), mock_scalars_result(mock_schedules)])
 
         schedules, total = await service.list_schedules(
             check_id=check_id,

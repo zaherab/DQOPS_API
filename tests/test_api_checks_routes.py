@@ -32,7 +32,7 @@ class TestCheckAPI:
             ),
         )
         db_session.add(conn)
-        await db_session.flush()
+        await db_session.commit()
         return conn
 
     @pytest.fixture
@@ -189,7 +189,9 @@ class TestCheckAPI:
         """POST /checks/{id}/run - Run check returns 202 with job info."""
         check_id = str(check.id)
 
-        with patch("dq_platform.services.execution_service.execute_check") as mock_execute:
+        # `execute_check` is imported lazily inside `submit_job`, so patch
+        # its real definition site (workers.tasks) rather than the import site.
+        with patch("dq_platform.workers.tasks.execute_check") as mock_execute:
             mock_task = MagicMock()
             mock_task.id = "celery-task-id-123"
             mock_execute.delay.return_value = mock_task

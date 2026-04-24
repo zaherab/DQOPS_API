@@ -10,6 +10,7 @@ import pytest_asyncio
 from dq_platform.api.errors import NotFoundError, ValidationError
 from dq_platform.models.incident import Incident, IncidentSeverity, IncidentStatus
 from dq_platform.services.incident_service import IncidentService
+from tests.conftest import mock_count_result, mock_scalars_result
 
 
 class TestIncidentService:
@@ -202,13 +203,7 @@ class TestIncidentService:
         check_id = uuid4()
         mock_incidents = [MagicMock(spec=Incident) for _ in range(5)]
 
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(i,) for i in range(5)]
-
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_incidents
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(5), mock_scalars_result(mock_incidents)])
 
         incidents, total = await service.list_incidents(
             check_id=check_id,

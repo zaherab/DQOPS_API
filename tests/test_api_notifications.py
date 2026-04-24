@@ -27,7 +27,7 @@ class TestNotificationAPI:
             min_severity="warning",
         )
         db_session.add(channel)
-        await db_session.flush()
+        await db_session.commit()
         return channel
 
     def test_create_channel_success(self, sync_client: TestClient):

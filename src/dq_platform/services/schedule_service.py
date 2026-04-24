@@ -179,6 +179,9 @@ class ScheduleService:
         schedule.next_run_at = self._calculate_next_run(schedule.cron_expression, schedule.timezone)
 
         await self.db.flush()
+        # Populate server-set columns (e.g. `updated_at`) so response
+        # serialization doesn't lazy-load outside the async context.
+        await self.db.refresh(schedule)
         return schedule
 
     async def delete(self, schedule_id: uuid.UUID) -> None:
