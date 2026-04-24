@@ -2,7 +2,9 @@
 
 import asyncio
 import os
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator, Sequence
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -15,6 +17,44 @@ from dq_platform.config import Settings, get_settings
 from dq_platform.db.session import get_db
 from dq_platform.main import app
 from dq_platform.models.base import Base
+
+# ─── SQLAlchemy Result mock helpers ────────────────────────────────────────
+# Unit tests that mock the AsyncSession need to mimic how services consume
+# `await db.execute(...)` results. Using these helpers instead of hand-rolling
+# `mock.all.return_value = [(1,)]` etc. keeps the test shape in sync with the
+# idiomatic SQLAlchemy access patterns the service layer actually uses:
+#   - COUNT(...) queries:  result.scalar()
+#   - Scalar ORM queries:  result.scalar_one_or_none() / scalar_one()
+#   - Full-row queries:    result.scalars().all()
+# If the service ever switches to a different access pattern, update the
+# helper here once instead of patching every test.
+
+
+def mock_count_result(value: int) -> MagicMock:
+    """Mock an SQLAlchemy Result for a COUNT(*) query (consumed via .scalar())."""
+    mock = MagicMock()
+    mock.scalar.return_value = value
+    return mock
+
+
+def mock_scalars_result(items: Sequence[Any]) -> MagicMock:
+    """Mock an SQLAlchemy Result for a multi-row query (consumed via .scalars().all())."""
+    mock = MagicMock()
+    mock.scalars.return_value.all.return_value = list(items)
+    return mock
+
+
+def mock_scalar_one_result(item: Any | None) -> MagicMock:
+    """Mock an SQLAlchemy Result for a single-row query.
+
+    Pass `None` for the "not found" case; the mock then behaves correctly for
+    both `.scalar_one_or_none()` and `.scalar()`.
+    """
+    mock = MagicMock()
+    mock.scalar_one_or_none.return_value = item
+    mock.scalar.return_value = item
+    return mock
+
 
 # Test database URL - use PostgreSQL for tests (JSONB compatibility)
 # Use 'postgres' as hostname when running inside Docker, 'localhost' for local

@@ -9,6 +9,7 @@ import pytest_asyncio
 from dq_platform.api.errors import NotFoundError
 from dq_platform.models.connection import Connection, ConnectionType
 from dq_platform.services.connection_service import ConnectionService
+from tests.conftest import mock_count_result, mock_scalars_result
 
 
 class TestConnectionService:
@@ -120,15 +121,7 @@ class TestConnectionService:
         """Test list_connections() with pagination."""
         mock_connections = [MagicMock(spec=Connection) for _ in range(5)]
 
-        # Mock count query
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(i,) for i in range(10)]
-
-        # Mock data query
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_connections
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(10), mock_scalars_result(mock_connections)])
 
         connections, total = await service.list_connections(offset=0, limit=5)
 
@@ -139,21 +132,14 @@ class TestConnectionService:
         """Test list_connections() filtering by connection type."""
         mock_connections = [MagicMock(spec=Connection)]
 
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(1,)]
-
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_connections
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(1), mock_scalars_result(mock_connections)])
 
         connections, total = await service.list_connections(connection_type=ConnectionType.POSTGRESQL)
 
         assert total == 1
         assert len(connections) == 1
-        # Verify the query was called with filter
-        calls = mock_db.execute.call_args_list
-        assert len(calls) == 2
+        # Verify both queries were issued: count + data
+        assert len(mock_db.execute.call_args_list) == 2
 
     async def test_update_partial(self, service, mock_db):
         """Test update() with partial fields."""
