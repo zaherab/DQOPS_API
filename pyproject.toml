@@ -33,7 +33,7 @@ dependencies = [
     "redshift-connector>=2.1.0",
     "duckdb>=1.5.2",
     "oracledb>=2.0.0",
-    "databricks-sql-connector>=3.0.0",
+    "databricks-sql-connector>=4.2.5",
 
     # HTTP client (webhook notifications)
     "httpx>=0.25.0",
