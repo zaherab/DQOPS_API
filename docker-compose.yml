@@ -92,6 +92,8 @@ services:
       dockerfile: Dockerfile
     container_name: dq-platform-worker
     command: celery -A dq_platform.workers.celery_app worker --loglevel=info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
       REDIS_URL: redis://redis:6379/0

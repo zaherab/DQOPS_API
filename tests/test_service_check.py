@@ -46,7 +46,7 @@ class TestCheckService:
         assert result.target_table == "users"
         assert result.target_column == "email"
         mock_db.add.assert_called_once()
-        mock_db.commit.assert_called_once()
+        mock_db.flush.assert_called_once()
 
     async def test_create_check_column_level_validation(self, service, mock_db):
         """Test create_check() validates column-level checks require target_column."""
@@ -147,7 +147,7 @@ class TestCheckService:
         mock_checks = [MagicMock(spec=Check) for _ in range(3)]
 
         mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(i,) for i in range(3)]
+        mock_count_result.scalar.return_value = 3
 
         mock_data_result = MagicMock()
         mock_data_result.scalars.return_value.all.return_value = mock_checks
@@ -264,7 +264,13 @@ class TestCheckService:
                 )
 
     async def test_get_historical_values(self, service, mock_db):
-        """Test _get_historical_values() returns sensor values."""
+        """Test _get_historical_values() returns sensor values.
+
+        The helper was lifted out of CheckService into check_runner when the
+        preview/execution paths were unified; it now lives at module scope.
+        """
+        from dq_platform.checks.check_runner import _get_historical_values
+
         check_id = uuid4()
         mock_check = MagicMock(spec=Check)
         mock_check.id = check_id
@@ -274,6 +280,6 @@ class TestCheckService:
         mock_result.all.return_value = [(10.5,), (20.3,), (15.0,)]
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        result = await service._get_historical_values(mock_check, days=30)
+        result = await _get_historical_values(mock_db, mock_check, days=30)
 
         assert result == [10.5, 20.3, 15.0]

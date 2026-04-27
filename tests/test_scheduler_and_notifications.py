@@ -282,7 +282,7 @@ class TestProcessScheduledChecks:
         mock_factory = MagicMock(return_value=mock_session)
 
         with (
-            patch("dq_platform.workers.tasks._create_task_session_factory", return_value=mock_factory),
+            patch("dq_platform.workers.tasks._get_task_session_factory", return_value=mock_factory),
             patch("dq_platform.workers.tasks.ScheduleService", return_value=mock_schedule_service),
         ):
             result = await _process_scheduled_checks_async()
@@ -317,7 +317,7 @@ class TestProcessScheduledChecks:
         mock_factory = MagicMock(return_value=mock_session)
 
         with (
-            patch("dq_platform.workers.tasks._create_task_session_factory", return_value=mock_factory),
+            patch("dq_platform.workers.tasks._get_task_session_factory", return_value=mock_factory),
             patch("dq_platform.workers.tasks.ScheduleService", return_value=mock_schedule_service),
             patch("dq_platform.workers.tasks.execute_check") as mock_execute,
         ):
@@ -352,7 +352,7 @@ class TestProcessScheduledChecks:
         mock_factory = MagicMock(return_value=mock_session)
 
         with (
-            patch("dq_platform.workers.tasks._create_task_session_factory", return_value=mock_factory),
+            patch("dq_platform.workers.tasks._get_task_session_factory", return_value=mock_factory),
             patch("dq_platform.workers.tasks.ScheduleService", return_value=mock_schedule_service),
             patch("dq_platform.workers.tasks.execute_check"),
         ):

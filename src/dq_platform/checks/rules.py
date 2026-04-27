@@ -622,6 +622,7 @@ def _humanize_message(
     result: RuleResult,
     category: str,
     description: str | None = None,
+    sensor_type: str | None = None,
 ) -> RuleResult:
     """Rewrite rule message to be human-readable based on check category and description.
 
@@ -651,12 +652,20 @@ def _humanize_message(
     elif category == "nulls":
         result.message = f"{_fmt_percent(float(actual))} null values (limit: {result.expected})"
 
-    # ── Uniqueness: duplicate percentage/count ───────────────────────────
+    # ── Uniqueness: distinct vs duplicate wording per sensor type ─────────
     elif category == "uniqueness":
-        if "%" in str(result.expected):
-            result.message = f"{_fmt_percent(float(actual))} duplicates (limit: {result.expected})"
+        # Prefer sensor_type (authoritative: DISTINCT_COUNT, DUPLICATE_COUNT,
+        # etc.) over description string matching. Description is only the
+        # fallback for callers that haven't threaded sensor_type yet.
+        if sensor_type is not None:
+            is_distinct = sensor_type.startswith("distinct")
         else:
-            result.message = f"{_fmt_number(float(actual))} duplicates (limit: {result.expected})"
+            is_distinct = description is not None and "distinct" in description.lower()
+        label = "distinct values" if is_distinct else "duplicates"
+        if "%" in str(result.expected):
+            result.message = f"{_fmt_percent(float(actual))} {label} (limit: {result.expected})"
+        else:
+            result.message = f"{_fmt_number(float(actual))} {label} (limit: {result.expected})"
 
     # ── Numeric/Statistical: value ranges ────────────────────────────────
     elif category in ("numeric", "statistical"):
@@ -813,6 +822,7 @@ def evaluate_rule(
     params: dict[str, Any],
     category: str | None = None,
     description: str | None = None,
+    sensor_type: str | None = None,
 ) -> RuleResult:
     """Evaluate a sensor value against a rule.
 
@@ -822,6 +832,9 @@ def evaluate_rule(
         params: Rule parameters (thresholds, etc.).
         category: Check category for human-readable message formatting.
         description: Check description for dynamic fallback messages.
+        sensor_type: Sensor type name (e.g. "distinct_count",
+            "duplicate_percent"); preferred over description for
+            disambiguating messages within a category.
 
     Returns:
         The rule evaluation result.
@@ -829,7 +842,7 @@ def evaluate_rule(
     rule_func = get_rule(rule_type)
     result = rule_func(sensor_value, params)
     if category:
-        result = _humanize_message(result, category, description)
+        result = _humanize_message(result, category, description, sensor_type)
     return result
 
 

@@ -20,6 +20,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # Enable TimescaleDB in the current database. The Docker image ships the
+    # extension binaries, but `CREATE EXTENSION` must run per-database. Fresh
+    # test DBs need this before the hypertable on `check_results` is created
+    # below. IF NOT EXISTS keeps it a no-op on already-initialized prod DBs.
+    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+
     # Create enum types
     op.execute("CREATE TYPE connection_type AS ENUM ('postgresql', 'mysql', 'sqlserver', 'bigquery', 'snowflake')")
     op.execute(

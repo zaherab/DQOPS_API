@@ -7,13 +7,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dq_platform.api.errors import NotFoundError
 from dq_platform.connectors.base import ColumnInfo, TableInfo
 from dq_platform.connectors.factory import get_connector
 from dq_platform.core.encryption import decrypt_config, encrypt_config
+from dq_platform.models.check import Check
 from dq_platform.models.connection import Connection, ConnectionType
 
 _connector_executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="db-connector")
@@ -167,16 +168,35 @@ class ConnectionService:
             connection.metadata_ = metadata_
 
         await self.db.flush()
+        # Refresh to populate server-set columns (e.g. `updated_at` from
+        # server_onupdate=func.now()). Without this, response serialization
+        # lazy-loads the attribute outside async context and fails.
+        await self.db.refresh(connection)
         return connection
 
     async def delete(self, connection_id: uuid.UUID) -> None:
-        """Soft delete a connection.
+        """Soft delete a connection and cascade-deactivate its checks.
+
+        Without cascading, soft-deleting a connection left its checks
+        active — they'd keep running (or orphan, if the connection was
+        hard-deleted later) with no governance counterpart. Schedulers,
+        dimension scores, and incident lifecycle all treated those
+        checks as live, which is wrong.
 
         Args:
             connection_id: Connection UUID.
         """
         connection = await self.get(connection_id)
         connection.is_active = False
+
+        # Cascade: deactivate all checks on this connection in a single
+        # statement. Results/incidents/jobs remain for history — only
+        # active checks stop producing new work.
+        await self.db.execute(
+            update(Check)
+            .where(Check.connection_id == connection_id, Check.is_active == True)  # noqa: E712
+            .values(is_active=False)
+        )
         await self.db.flush()
 
     async def test_connection(self, connection_id: uuid.UUID) -> bool:

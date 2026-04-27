@@ -2,6 +2,7 @@
 
 import pytest
 
+from dq_platform.checks.dqops_checks import CHECK_REGISTRY, DQOpsCheckType
 from dq_platform.checks.gx_registry import (
     GX_EXPECTATION_MAP,
     build_expectation,
@@ -14,10 +15,15 @@ from dq_platform.models.check import CheckType
 class TestGXRegistry:
     """Test GX expectation registry."""
 
-    def test_all_check_types_registered(self) -> None:
-        """Verify all CheckType values have GX mappings."""
-        for check_type in CheckType:
-            assert check_type in GX_EXPECTATION_MAP, f"Missing mapping for {check_type}"
+    def test_every_check_type_has_an_executor(self) -> None:
+        """Every CheckType must be runnable — either via a DQOps sensor or a
+        GX expectation. The platform has migrated most checks to the DQOps
+        engine; GX remains as a fallback for a handful of legacy types.
+        What matters is that no CheckType exists with *no* executor at all.
+        """
+        dqops_types = {CheckType(dqops_ct.value) for dqops_ct in DQOpsCheckType if dqops_ct in CHECK_REGISTRY}
+        missing = [ct.value for ct in CheckType if ct not in GX_EXPECTATION_MAP and ct not in dqops_types]
+        assert not missing, f"CheckType(s) have no executor (neither DQOps nor GX): {missing}"
 
     def test_is_column_level_check_table_level(self) -> None:
         """Test table-level checks are identified correctly."""

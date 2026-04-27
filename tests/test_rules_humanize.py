@@ -92,6 +92,68 @@ class TestHumanizeUniqueness:
         r = _humanize_message(_make_result(150, "<= 0", False), "uniqueness")
         assert "150 duplicates" in r.message
 
+    def test_duplicate_percent_with_duplicate_description(self) -> None:
+        r = _humanize_message(
+            _make_result(2.1, "<= 0%", False),
+            "uniqueness",
+            description="Check that duplicate percentage is within limit",
+        )
+        assert "2.10% duplicates" in r.message
+
+    def test_distinct_count_labels_as_distinct_values(self) -> None:
+        r = _humanize_message(
+            _make_result(95, "[None, None]", True),
+            "uniqueness",
+            description="Check that distinct count is within range",
+        )
+        assert "95 distinct values" in r.message
+        assert "duplicates" not in r.message
+
+    def test_distinct_percent_labels_as_distinct_values(self) -> None:
+        r = _humanize_message(
+            _make_result(97.5, "[98.0%, 100.0%]", False),
+            "uniqueness",
+            description="Check that distinct percentage is within range",
+        )
+        assert "97.50% distinct values" in r.message
+        assert "duplicates" not in r.message
+
+    def test_sensor_type_overrides_description_for_distinct(self) -> None:
+        # Description says "duplicate" but sensor_type is authoritative.
+        r = _humanize_message(
+            _make_result(42, "[None, None]", True),
+            "uniqueness",
+            description="Check that duplicate count is within limit",
+            sensor_type="distinct_count",
+        )
+        assert "42 distinct values" in r.message
+
+    def test_sensor_type_overrides_description_for_duplicate(self) -> None:
+        r = _humanize_message(
+            _make_result(7, "<= 0", False),
+            "uniqueness",
+            description="Check that distinct count is within range",
+            sensor_type="duplicate_count",
+        )
+        assert "7 duplicates" in r.message
+        assert "distinct" not in r.message
+
+    def test_distinct_percent_via_sensor_type(self) -> None:
+        r = _humanize_message(
+            _make_result(95.0, "[98%, 100%]", False),
+            "uniqueness",
+            sensor_type="distinct_percent",
+        )
+        assert "95.00% distinct values" in r.message
+
+    def test_duplicate_percent_via_sensor_type(self) -> None:
+        r = _humanize_message(
+            _make_result(5.0, "<= 1%", False),
+            "uniqueness",
+            sensor_type="duplicate_percent",
+        )
+        assert "5.00% duplicates" in r.message
+
 
 class TestHumanizeNumeric:
     def test_in_range(self) -> None:

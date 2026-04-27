@@ -18,8 +18,52 @@ from dq_platform.checks.dqops_checks import (
     get_check as get_dqops_check_def,
 )
 from dq_platform.checks.gx_registry import is_column_level_check
+from dq_platform.checks.sensors import get_sensor
 from dq_platform.models.check import Check, CheckMode, CheckTimeScale, CheckType
 from dq_platform.services.connection_service import ConnectionService
+
+
+def _dry_run_render(
+    check_type: CheckType,
+    target_schema: str | None,
+    target_table: str,
+    target_column: str | None,
+    parameters: dict[str, Any] | None,
+) -> None:
+    """Validate a check config can produce valid SQL before we persist it.
+
+    Attempts to render the sensor's Jinja template with the merged params.
+    Surfaces missing required_params (e.g. `reference_table` on cross-table
+    sensors) as a ValidationError so the API returns 422 instead of saving
+    a check that will fail on every execution.
+
+    GX-only check types (not in the DQOps registry) are skipped — they don't
+    have a sensor template to render.
+    """
+    try:
+        dqops_check = get_dqops_check_def(DQOpsCheckType(check_type.value))
+    except (ValueError, KeyError):
+        return  # GX fallback; no sensor to validate
+
+    sensor = get_sensor(dqops_check.sensor_type)
+
+    # Merge params: sensor defaults → check-def defaults → user-supplied.
+    # User-supplied wins so callers can override defaults.
+    merged: dict[str, Any] = {}
+    if dqops_check.default_params:
+        merged.update(dqops_check.default_params)
+    if parameters:
+        merged.update(parameters)
+    # Identifier slots used by the templates.
+    merged["schema_name"] = target_schema or "public"
+    merged["table_name"] = target_table
+    if target_column is not None:
+        merged["column_name"] = target_column
+
+    try:
+        sensor.render(merged)
+    except ValueError as e:
+        raise ValidationError(str(e)) from e
 
 
 @dataclass
@@ -103,6 +147,10 @@ class CheckService:
         if check_mode == CheckMode.PARTITIONED and not partition_by_column:
             raise ValidationError("Partitioned checks require partition_by_column")
 
+        # Dry-run render the sensor template so we reject configs that can't
+        # produce valid SQL (e.g. cross-table sensors missing reference_table).
+        _dry_run_render(check_type, target_schema, target_table, target_column, parameters)
+
         check = Check(
             name=name,
             description=description,
@@ -120,7 +168,10 @@ class CheckService:
         )
 
         self.db.add(check)
-        await self.db.commit()
+        # Flush (not commit) so the request-level session owner (`get_db`)
+        # controls the transaction boundary. Matches ConnectionService /
+        # ExecutionService / ScheduleService.
+        await self.db.flush()
         return check
 
     async def get_check(self, check_id: UUID, *, include_inactive: bool = False) -> Check | None:
@@ -256,7 +307,19 @@ class CheckService:
         if rule_parameters is not None:
             check.rule_parameters = rule_parameters
 
-        await self.db.commit()
+        # Revalidate the sensor template with the updated state. Guards
+        # against clearing a required param (e.g. reference_table) via PATCH.
+        _dry_run_render(
+            check.check_type,
+            check.target_schema,
+            check.target_table,
+            check.target_column,
+            check.parameters,
+        )
+
+        await self.db.flush()
+        # Populate server-set columns (e.g. `updated_at`) so response
+        # serialization doesn't lazy-load outside the async context.
         await self.db.refresh(check)
         return check
 
@@ -274,7 +337,7 @@ class CheckService:
             return False
 
         check.is_active = False
-        await self.db.commit()
+        await self.db.flush()
         return True
 
     async def preview_check(self, check_id: UUID) -> PreviewResult:

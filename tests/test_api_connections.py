@@ -36,7 +36,7 @@ class TestConnectionAPI:
             metadata_={"env": "test"},
         )
         db_session.add(conn)
-        await db_session.flush()
+        await db_session.commit()
         return conn
 
     def test_create_connection_success(self, sync_client: TestClient, sample_config):

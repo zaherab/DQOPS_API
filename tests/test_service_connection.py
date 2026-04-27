@@ -9,6 +9,7 @@ import pytest_asyncio
 from dq_platform.api.errors import NotFoundError
 from dq_platform.models.connection import Connection, ConnectionType
 from dq_platform.services.connection_service import ConnectionService
+from tests.conftest import mock_count_result, mock_scalars_result
 
 
 class TestConnectionService:
@@ -120,15 +121,7 @@ class TestConnectionService:
         """Test list_connections() with pagination."""
         mock_connections = [MagicMock(spec=Connection) for _ in range(5)]
 
-        # Mock count query
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(i,) for i in range(10)]
-
-        # Mock data query
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_connections
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(10), mock_scalars_result(mock_connections)])
 
         connections, total = await service.list_connections(offset=0, limit=5)
 
@@ -139,21 +132,14 @@ class TestConnectionService:
         """Test list_connections() filtering by connection type."""
         mock_connections = [MagicMock(spec=Connection)]
 
-        mock_count_result = MagicMock()
-        mock_count_result.all.return_value = [(1,)]
-
-        mock_data_result = MagicMock()
-        mock_data_result.scalars.return_value.all.return_value = mock_connections
-
-        mock_db.execute = AsyncMock(side_effect=[mock_count_result, mock_data_result])
+        mock_db.execute = AsyncMock(side_effect=[mock_count_result(1), mock_scalars_result(mock_connections)])
 
         connections, total = await service.list_connections(connection_type=ConnectionType.POSTGRESQL)
 
         assert total == 1
         assert len(connections) == 1
-        # Verify the query was called with filter
-        calls = mock_db.execute.call_args_list
-        assert len(calls) == 2
+        # Verify both queries were issued: count + data
+        assert len(mock_db.execute.call_args_list) == 2
 
     async def test_update_partial(self, service, mock_db):
         """Test update() with partial fields."""
@@ -209,6 +195,25 @@ class TestConnectionService:
 
         assert mock_connection.is_active is False
         mock_db.flush.assert_called_once()
+
+    async def test_delete_cascades_to_checks(self, service, mock_db):
+        """delete() must deactivate all active checks on the connection."""
+        connection_id = uuid4()
+        mock_connection = MagicMock(spec=Connection)
+        mock_connection.is_active = True
+
+        with patch.object(service, "get", AsyncMock(return_value=mock_connection)):
+            await service.delete(connection_id)
+
+        # db.execute called exactly once with an UPDATE statement
+        # targeting checks, scoped to this connection_id.
+        assert mock_db.execute.await_count == 1
+        stmt = mock_db.execute.await_args.args[0]
+        compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+        assert "UPDATE checks" in compiled
+        assert "is_active" in compiled
+        # SQLAlchemy renders UUIDs without dashes under literal_binds.
+        assert connection_id.hex in compiled
 
     async def test_test_connection_success(self, service, mock_db):
         """Test test_connection() with successful connection."""

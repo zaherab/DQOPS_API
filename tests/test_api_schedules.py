@@ -30,7 +30,7 @@ class TestScheduleAPI:
             ),
         )
         db_session.add(conn)
-        await db_session.flush()
+        await db_session.commit()
         return conn
 
     @pytest.fixture
@@ -45,7 +45,7 @@ class TestScheduleAPI:
             target_column="email",
         )
         db_session.add(check)
-        await db_session.flush()
+        await db_session.commit()
         return check
 
     @pytest.fixture
@@ -62,7 +62,7 @@ class TestScheduleAPI:
             next_run_at=datetime.now(UTC) + timedelta(hours=6),
         )
         db_session.add(schedule)
-        await db_session.flush()
+        await db_session.commit()
         return schedule
 
     def test_create_schedule_success(self, sync_client: TestClient, check):

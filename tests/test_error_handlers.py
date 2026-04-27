@@ -41,7 +41,9 @@ class TestErrorHandlers:
             assert "Resource" in data["error"]["message"]
         finally:
             # Clean up - remove test router
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]
 
     def test_validation_error_structure(self, sync_client: TestClient):
         """ValidationError returns 422 with proper JSON structure."""
@@ -68,7 +70,9 @@ class TestErrorHandlers:
             assert "ValidationError" in data["error"]["type"]
             assert "Invalid input" in data["error"]["message"]
         finally:
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]
 
     def test_conflict_error_structure(self, sync_client: TestClient):
         """ConflictError returns 409 with proper JSON structure."""
@@ -95,7 +99,9 @@ class TestErrorHandlers:
             assert "ConflictError" in data["error"]["type"]
             assert "already exists" in data["error"]["message"]
         finally:
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]
 
     def test_generic_exception_returns_500(self, sync_client: TestClient):
         """Generic exception returns 500 with sanitized message."""
@@ -123,7 +129,9 @@ class TestErrorHandlers:
             assert "secret details" not in data["error"]["message"]
             assert data["error"]["type"] == "InternalError"
         finally:
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]
 
     def test_dqplatform_error_base_class(self):
         """DQPlatformError base class stores message and status code."""
@@ -179,7 +187,9 @@ class TestErrorHandlers:
             assert "ConnectionError" in data["error"]["type"]
             assert "database" in data["error"]["message"]
         finally:
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]
 
     def test_execution_error_structure(self, sync_client: TestClient):
         """ExecutionError returns 500 with proper structure."""
@@ -205,4 +215,6 @@ class TestErrorHandlers:
             assert "ExecutionError" in data["error"]["type"]
             assert "execution failed" in data["error"]["message"]
         finally:
-            app.routes = [r for r in app.routes if not hasattr(r, "path") or "/test-error" not in r.path]
+            app.router.routes[:] = [
+                r for r in app.router.routes if not hasattr(r, "path") or "/test-error" not in r.path
+            ]

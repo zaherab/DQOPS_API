@@ -1,6 +1,6 @@
 """Tests for notification API endpoints."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -27,7 +27,7 @@ class TestNotificationAPI:
             min_severity="warning",
         )
         db_session.add(channel)
-        await db_session.flush()
+        await db_session.commit()
         return channel
 
     def test_create_channel_success(self, sync_client: TestClient):
@@ -163,14 +163,19 @@ class TestNotificationAPI:
         """POST /notifications/channels/{id}/test - Test webhook returns 200."""
         channel_id = str(channel.id)
 
+        # `httpx.AsyncClient()` is used as `async with` + `await client.post()`.
+        # Both `__aenter__`/`__aexit__` and `.post()` are awaited, so they must
+        # be AsyncMock, not MagicMock — the previous MagicMock setup raised
+        # "MagicMock can't be awaited" and the service swallowed it into
+        # {"success": False}.
         with patch("dq_platform.services.notification_service.httpx.AsyncClient") as mock_client_class:
             mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.raise_for_status.return_value = None
-            mock_client.post.return_value = mock_response
-            mock_client_class.return_value.__aenter__ = MagicMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = MagicMock(return_value=False)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
 
             response = sync_client.post(
                 f"/api/v1/notifications/channels/{channel_id}/test",
@@ -201,9 +206,9 @@ class TestNotificationAPI:
 
         with patch("dq_platform.services.notification_service.httpx.AsyncClient") as mock_client_class:
             mock_client = MagicMock()
-            mock_client.post.side_effect = Exception("Connection timeout")
-            mock_client_class.return_value.__aenter__ = MagicMock(return_value=mock_client)
-            mock_client_class.return_value.__aexit__ = MagicMock(return_value=False)
+            mock_client.post = AsyncMock(side_effect=Exception("Connection timeout"))
+            mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
 
             response = sync_client.post(
                 f"/api/v1/notifications/channels/{channel_id}/test",
