@@ -39,7 +39,7 @@ dependencies = [
     "httpx>=0.25.0",
 
     # Great Expectations (check engine)
-    "great-expectations>=1.0.0",
+    "great-expectations>=1.16.0",
 
     # Security
     "cryptography>=41.0.0",
