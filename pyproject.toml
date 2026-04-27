@@ -42,7 +42,7 @@ dependencies = [
     "great-expectations>=1.16.0",
 
     # Security
-    "cryptography>=41.0.0",
+    "cryptography>=46.0.7",
 
     # Scheduling
     "croniter>=2.0.0",
