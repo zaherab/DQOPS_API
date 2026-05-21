@@ -78,11 +78,11 @@ async def run_check(
     if "reference_connection_id" in (check.parameters or {}):
         return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db, t0)
 
-    # Determine quote char from connection type
-    conn_type = connection_config.get("type", "")
-    quote_char = QUOTE_CHARS.get(conn_type, '"')
-
-    # Execute DQOps check
+    # Execute DQOps check. quote_char is left None so the executor picks
+    # the right quoting per dialect — it renders sensor SQL in Postgres
+    # form and transpiles (incl. quoting) to the target engine. Passing a
+    # pre-computed quote char here would bake in dialect quoting that
+    # sqlglot then can't read back as Postgres.
     result = await run_dqops_check(
         check_type=dqops_check_type,
         connection_config=connection_config,
@@ -90,7 +90,6 @@ async def run_check(
         table_name=check.target_table,
         column_name=check.target_column,
         rule_params=rule_params,
-        quote_char=quote_char,
     )
 
     return CheckRunResult(

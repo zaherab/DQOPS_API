@@ -35,6 +35,9 @@ dependencies = [
     "oracledb>=2.0.0",
     "databricks-sql-connector>=3.0.0",
 
+    # SQL dialect transpilation (sensor SQL portability across engines)
+    "sqlglot>=25.0.0",
+
     # HTTP client (webhook notifications)
     "httpx>=0.25.0",
 

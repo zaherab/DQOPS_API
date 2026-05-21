@@ -120,3 +120,7 @@ class RedshiftConnector(BaseConnector):
             )
             for row in results
         ]
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # Redshift inherits PG syntax for hashing.
+        return f"(ABS(STRTOL(MD5(CAST({qcol} AS VARCHAR)), 16) % {int(modulus)}))"

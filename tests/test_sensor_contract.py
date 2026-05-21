@@ -34,6 +34,11 @@ AUTO_IDENTIFIERS = frozenset(
         "reference_table",
         "reference_column",
         "partition_filter",
+        # raw_* — un-quoted name copies render() auto-derives for catalog
+        # sensors that need the bare name as a string literal.
+        "raw_schema_name",
+        "raw_table_name",
+        "raw_column_name",
     }
 )
 
@@ -47,6 +52,9 @@ JINJA_CONTROL = frozenset(
 # capture the first identifier in the expression. Also `{% if foo %}`.
 _VAR_RE = re.compile(r"{{-?\s*([a-zA-Z_][a-zA-Z0-9_]*)")
 _IF_RE = re.compile(r"{%-?\s*if\s+([a-zA-Z_][a-zA-Z0-9_]*)")
+# `{% for X in Y %}` — X is a loop-local variable (not a sensor param);
+# Y must still be guarded. Capture the loop target so it can be excluded.
+_FOR_RE = re.compile(r"{%-?\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s")
 
 
 def _literal(node: ast.AST):
@@ -102,8 +110,10 @@ def _collect_params() -> list[tuple[str, str, list[str]]]:
 
         refs = set(_VAR_RE.findall(template)) | set(_IF_RE.findall(template))
         refs -= JINJA_CONTROL
+        # `{% for X in ... %}` loop targets are template-local, not params.
+        loop_vars = set(_FOR_RE.findall(template))
 
-        unsatisfied = sorted(refs - supplied - defaults - required)
+        unsatisfied = sorted(refs - supplied - defaults - required - loop_vars)
         if unsatisfied:
             problems.append((fname, var, unsatisfied))
     return problems

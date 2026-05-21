@@ -11,10 +11,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dq_platform -h 127.0.0.1 -p 5432 -q"]
       interval: 5s
-      timeout: 5s
-      retries: 5
+      timeout: 3s
+      retries: 20
+      start_period: 30s
     networks:
       - dq-platform-network
 
@@ -61,6 +62,10 @@ services:
     command: uvicorn dq_platform.main:app --host 0.0.0.0 --port 9000 --workers 4
     ports:
       - "9000:9000"
+    volumes:
+      # Shared sample-data volume — lets file-based connectors (DuckDB)
+      # be reached by both api (profile) and worker (check execution).
+      - dq_shared_data:/shared
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
       REDIS_URL: redis://redis:6379/0
@@ -94,6 +99,8 @@ services:
     command: celery -A dq_platform.workers.celery_app worker --loglevel=info
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - dq_shared_data:/shared
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/dq_platform
       REDIS_URL: redis://redis:6379/0
@@ -153,6 +160,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  dq_shared_data:
 
 networks:
   dq-platform-network:

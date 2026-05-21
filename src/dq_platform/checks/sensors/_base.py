@@ -328,7 +328,20 @@ QUOTE_CHARS: dict[str, str] = {
 
 @dataclass
 class Sensor:
-    """A sensor definition with SQL template."""
+    """A sensor definition with SQL template.
+
+    Dialect portability — most sensors author one Postgres `template` and
+    rely on sqlglot transpilation at execution time. Two escape hatches
+    cover the cases transpilation can't:
+
+    - `dialect_templates`: per-dialect template override, keyed by the
+      connection type string ("oracle", "sqlserver", ...). Used when a
+      construct has no portable form (e.g. "seconds since" arithmetic).
+    - `unsupported_dialects`: engines where the sensor genuinely cannot
+      run (e.g. regex on SQL Server, which has no native regex). The
+      executor skips these cleanly — the check is recorded not_assessed,
+      never retried.
+    """
 
     name: str
     description: str
@@ -336,8 +349,25 @@ class Sensor:
     template: str
     default_params: dict[str, Any] | None = None
     required_params: list[str] = field(default_factory=list)
+    dialect_templates: dict[str, str] = field(default_factory=dict)
+    unsupported_dialects: frozenset[str] = frozenset()
 
-    def render(self, params: dict[str, Any], quote_char: str = '"') -> str:
+    def template_for(self, dialect: str | None) -> str:
+        """Return the SQL template for a dialect — override or base."""
+        if dialect and dialect in self.dialect_templates:
+            return self.dialect_templates[dialect]
+        return self.template
+
+    def supports(self, dialect: str | None) -> bool:
+        """Whether this sensor can run on the given dialect."""
+        return not dialect or dialect not in self.unsupported_dialects
+
+    def render(
+        self,
+        params: dict[str, Any],
+        quote_char: str = '"',
+        dialect: str | None = None,
+    ) -> str:
         """Render the SQL template with parameters.
 
         Identifier parameters (schema_name, table_name, column_name) are
@@ -348,6 +378,8 @@ class Sensor:
         Args:
             params: Template parameters.
             quote_char: Quote character for identifiers (default: '"').
+            dialect: Connection type — selects a `dialect_templates`
+                override when one exists, otherwise the base template.
 
         Returns:
             Rendered SQL string.
@@ -363,10 +395,29 @@ class Sensor:
             if val is None or (isinstance(val, str) and not val.strip()):
                 raise ValueError(f"Sensor '{self.name}' requires non-empty parameter '{key}'")
 
-        # Convert Python lists to SQL ARRAY literals
+        # Convert Python lists to SQL ARRAY literals — EXCEPT
+        # `expected_values`, which the in-set sensors iterate directly with
+        # a Jinja {% for %} loop to build a portable `IN (...)` list.
+        # (PG `ANY(ARRAY[...])` has no MySQL/SQL Server equivalent.)
+        #
+        # SECURITY: expected_values is producer-controlled. The IN-list
+        # template renders each value as `'{{ v }}'` — Jinja does NOT
+        # escape SQL quotes, so a value containing `'` would break out of
+        # the string literal (SQL injection). Escape single quotes here by
+        # doubling them before the template ever sees the value.
         for key, val in safe_params.items():
-            if isinstance(val, list):
+            if key == "expected_values" and isinstance(val, list):
+                safe_params[key] = [str(v).replace("'", "''") for v in val]
+            elif isinstance(val, list):
                 safe_params[key] = _list_to_sql_array(val)
+
+        # Expose un-quoted copies as raw_* — catalog sensors need the bare
+        # name as a STRING LITERAL (e.g. WHERE table_name = 'orders'),
+        # which the quoted-identifier form can't provide.
+        for key in ("schema_name", "table_name", "column_name"):
+            if key in safe_params and safe_params[key] is not None:
+                # Escape single quotes — these land inside string literals.
+                safe_params[f"raw_{key}"] = str(safe_params[key]).replace("'", "''")
 
         # Quote identifier parameters
         for key in ("schema_name", "table_name", "column_name"):
@@ -384,7 +435,7 @@ class Sensor:
         if "partition_filter" in safe_params and safe_params["partition_filter"]:
             _validate_partition_filter(str(safe_params["partition_filter"]))
 
-        template = Template(self.template)
+        template = Template(self.template_for(dialect))
         sql = str(template.render(**safe_params))
 
         # Strip any Python comments that leaked into SQL

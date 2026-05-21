@@ -14,10 +14,10 @@ from dq_platform.models.check import Check
 from dq_platform.models.result import CheckResult
 from dq_platform.odps.dimension_mapping import (
     ALL_DIMENSIONS,
-    CATEGORY_TO_DIMENSION,
     FALLBACK_CATEGORY_MAP,
     SEVERITY_WEIGHTS,
     ODPSDimension,
+    get_dimension_for_check_type,
 )
 from dq_platform.schemas.dimension import (
     DimensionCheckDetail,
@@ -107,8 +107,7 @@ class DimensionService:
         # 2. Map checks to dimensions
         dim_checks: dict[ODPSDimension, list[Check]] = defaultdict(list)
         for check in checks:
-            cat = _check_type_to_category(check.check_type.value)
-            dim = CATEGORY_TO_DIMENSION.get(cat) if cat else None
+            dim = get_dimension_for_check_type(check.check_type.value)
             if dim is not None:
                 dim_checks[dim].append(check)
 
@@ -201,12 +200,10 @@ class DimensionService:
         """Get daily score snapshots for a single dimension."""
         odps_dim = ODPSDimension(dimension)
 
-        # Categories for this dimension
-        categories = {cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim}
-
-        # Checks in those categories for the connection
+        # Resolve each check's dim via the override-aware resolver and keep
+        # the ones matching the requested dim.
         checks = await self._get_checks(connection_id)
-        dim_check_ids = [c.id for c in checks if _check_type_to_category(c.check_type.value) in categories]
+        dim_check_ids = [c.id for c in checks if get_dimension_for_check_type(c.check_type.value) == odps_dim]
 
         if not dim_check_ids:
             return DimensionTrendResponse(dimension=dimension, snapshots=[])
@@ -265,8 +262,7 @@ class DimensionService:
         # Map each check to its dimension
         check_to_dim: dict[uuid.UUID, ODPSDimension] = {}
         for check in checks:
-            cat = _check_type_to_category(check.check_type.value)
-            dim = CATEGORY_TO_DIMENSION.get(cat) if cat else None
+            dim = get_dimension_for_check_type(check.check_type.value)
             if dim is not None:
                 check_to_dim[check.id] = dim
 
@@ -335,10 +331,10 @@ class DimensionService:
 
         details: list[DimensionCheckDetail] = []
         for check in checks:
-            cat = _check_type_to_category(check.check_type.value)
-            dim = CATEGORY_TO_DIMENSION.get(cat) if cat else None
+            dim = get_dimension_for_check_type(check.check_type.value)
             if dim is None:
                 continue
+            cat = _check_type_to_category(check.check_type.value)
             result = result_by_check.get(check.id)
             sev_str = None
             if result and result.severity:
@@ -367,10 +363,8 @@ class DimensionService:
         """Get all checks contributing to a dimension with their latest result."""
         odps_dim = ODPSDimension(dimension)
 
-        categories = {cat for cat, d in CATEGORY_TO_DIMENSION.items() if d == odps_dim}
-
         checks = await self._get_checks(connection_id)
-        dim_checks = [c for c in checks if _check_type_to_category(c.check_type.value) in categories]
+        dim_checks = [c for c in checks if get_dimension_for_check_type(c.check_type.value) == odps_dim]
 
         if not dim_checks:
             return []

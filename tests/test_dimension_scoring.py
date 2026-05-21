@@ -59,7 +59,9 @@ async def test_dimension_with_registered_but_unrun_checks_is_not_assessed() -> N
     db = MagicMock()
     svc = DimensionService(db=db)
 
-    # 2 accuracy checks, neither executed yet.
+    # 2 conformity checks, neither executed yet. number_in_range_percent and
+    # negative_values_percent are range/bound checks — conformity per the
+    # ODPS-aligned mapping (accuracy = veracity vs source, not range bounds).
     checks = [
         _stub_check(DQOpsCheckType.NUMBER_IN_RANGE_PERCENT),
         _stub_check(DQOpsCheckType.NEGATIVE_VALUES_PERCENT),
@@ -68,12 +70,12 @@ async def test_dimension_with_registered_but_unrun_checks_is_not_assessed() -> N
     svc._get_latest_results = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
     resp = await svc.get_dimension_scores()
-    accuracy = next(d for d in resp.dimensions if d.dimension == "accuracy")
+    conformity = next(d for d in resp.dimensions if d.dimension == "conformity")
 
-    assert accuracy.score is None, "Unexecuted checks must not score as 0%"
-    assert accuracy.status == "not_assessed"
-    assert accuracy.check_count == 2
-    assert accuracy.not_run_count == 2, (
+    assert conformity.score is None, "Unexecuted checks must not score as 0%"
+    assert conformity.status == "not_assessed"
+    assert conformity.check_count == 2
+    assert conformity.not_run_count == 2, (
         "not_run_count must expose the gap so the UI can render 'pending first run' distinctly from 'no checks'"
     )
     # And the overall score must not be dragged down by the unassessed dim.

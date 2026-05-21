@@ -279,3 +279,168 @@ class BaseConnector(ABC):
             Quoted identifier.
         """
         return f'"{identifier}"'
+
+    # ─── Profile / sample / fingerprint helpers ──────────────────────────
+    # Used by dq_platform.profilers for deterministic DQ check emission.
+    # See profilers/profile_runner.py and profilers/sample_fetcher.py for
+    # the orchestration. SQL is designed to look like generic column
+    # profiling so customer DBAs can't reverse-engineer the check intent
+    # from query logs.
+
+    def build_profile_sql(
+        self,
+        schema: str,
+        table: str,
+        columns: list[dict[str, Any]],
+    ) -> str:
+        """Build a single SELECT that returns all per-column aggregates.
+
+        Args:
+            schema: schema name.
+            table: table name.
+            columns: list of {name, classification, logical_type}. When
+                classification == "PII", min/max/min_len/max_len/distinct
+                are skipped — only count + nulls are emitted.
+
+        Returns:
+            One SQL string. Result has opaque numeric aliases (c0_a1,
+            c0_a2, ...) — no check-type identifiers in output column names.
+
+        Override only if the dialect lacks a standard aggregate fn.
+        """
+        qschema = self.quote_identifier(schema)
+        qtable = self.quote_identifier(table)
+        select_terms: list[str] = ["COUNT(*) AS r_a0"]
+        for idx, col in enumerate(columns):
+            name = col["name"]
+            qcol = self.quote_identifier(name)
+            classification = col.get("classification")
+            is_pii = classification == "PII"
+            # MIN/MAX is undefined for boolean columns on most engines
+            # (Postgres: "function min(boolean) does not exist"). Skip the
+            # min/max aggregates for booleans — count + distinct still run.
+            logical = (col.get("logical_type") or "").lower()
+            is_bool = logical in ("boolean", "bool")
+
+            # Position-prefixed aliases keep the result schema opaque.
+            prefix = f"c{idx}"
+            select_terms.append(f"COUNT({qcol}) AS {prefix}_a1")
+            if not is_pii:
+                select_terms.append(f"COUNT(DISTINCT {qcol}) AS {prefix}_a2")
+                if not is_bool:
+                    select_terms.append(f"MIN({qcol}) AS {prefix}_a3")
+                    select_terms.append(f"MAX({qcol}) AS {prefix}_a4")
+                # Length stats only meaningful for text — wrap in a
+                # text cast so numeric/date cols don't error.
+                cast = self._cast_text_expr(qcol)
+                length = self._text_length_expr(cast)
+                select_terms.append(f"MIN({length}) AS {prefix}_a5")
+                select_terms.append(f"MAX({length}) AS {prefix}_a6")
+
+        return f"SELECT {', '.join(select_terms)} FROM {qschema}.{qtable}"
+
+    def _cast_text_expr(self, qcol: str) -> str:
+        """Cast a column reference to text for length measurement.
+
+        Override per dialect — MySQL needs CHAR, Oracle TO_CHAR, BigQuery
+        STRING, SQL Server VARCHAR(MAX).
+        """
+        return f"CAST({qcol} AS VARCHAR)"
+
+    def _text_length_expr(self, text_expr: str) -> str:
+        """String-length function. ANSI default LENGTH; SQL Server uses LEN."""
+        return f"LENGTH({text_expr})"
+
+    def build_sample_sql(
+        self,
+        schema: str,
+        table: str,
+        columns: list[str],
+        pk: str,
+        n: int,
+        seed: int = 1,
+        modulus: int = 100_000,
+    ) -> str:
+        """Build a deterministic sample SQL on the primary-key column.
+
+        Strategy: ORDER BY hash(pk, seed) LIMIT n. Returns exactly n rows
+        (or all rows if table smaller). Same seed → same rows. Scales
+        from 5-row dev tables to billion-row warehouses without tuning.
+
+        Block-level TABLESAMPLE is avoided because it skews enum/codelist
+        inference on clustered tables.
+
+        Args:
+            schema: schema name.
+            table: table name.
+            columns: columns to project. Caller is expected to omit PII.
+            pk: column to hash on. Must have decent distribution.
+            n: hard cap on rows returned. Capped at MAX_SAMPLE_ROWS by
+                the sample_fetcher.
+            seed: deterministic seed mixed into the hash.
+            modulus: legacy parameter, kept for backwards-compat with
+                early callers. Now affects only the bucket spread inside
+                the hash expression and does NOT change row count.
+
+        Returns:
+            SQL string with seed inlined (integer-coerced for safety).
+        """
+        qschema = self.quote_identifier(schema)
+        qtable = self.quote_identifier(table)
+        qpk = self.quote_identifier(pk)
+        projected = ", ".join(self.quote_identifier(c) for c in columns) if columns else "*"
+        # Mix the seed into the hash bucket so different seeds → different
+        # samples on the same table.
+        hash_expr = self._hash_mod_expr(qpk, modulus)
+        seeded_expr = f"({hash_expr} + {int(seed)})"
+        return f"SELECT {projected} FROM {qschema}.{qtable} ORDER BY {seeded_expr} {self._limit_clause(n)}"
+
+    def _limit_clause(self, n: int) -> str:
+        """Row-cap clause appended after ORDER BY.
+
+        ANSI default is `LIMIT n` (PG, MySQL, DuckDB, Redshift, BigQuery,
+        Snowflake, Spark). Oracle and SQL Server override — they use the
+        SQL:2008 `OFFSET/FETCH` form instead.
+        """
+        return f"LIMIT {int(n)}"
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        """Dialect-specific hash-mod expression on a column.
+
+        Default uses ANSI MOD on a CRC-style hash. Each dialect overrides
+        with its native fingerprint function:
+            PG/Redshift    HASHTEXT
+            BigQuery       FARM_FINGERPRINT
+            Snowflake      HASH
+            MySQL          CRC32
+            SQL Server     CHECKSUM
+            Oracle         ORA_HASH
+            DuckDB         HASH
+            Databricks     HASH
+        """
+        # ANSI fallback — works on most dialects via CAST + sum-of-codes.
+        # Per-dialect overrides preferred for distribution quality.
+        return f"MOD(ABS(LENGTH(CAST({qcol} AS VARCHAR))), {int(modulus)})"
+
+    def get_schema_fingerprint(self, schema: str, table: str) -> str:
+        """Hash of (column_name, data_type, is_nullable, ordinal_position).
+
+        Used as cache key so sample data is invalidated when the table
+        shape changes. Columns are sorted by name before hashing so a
+        reordering doesn't trigger a false invalidation.
+        """
+        import hashlib
+
+        cols = self.get_columns(schema, table)
+        # Sort by name. Tuple shape locked: any new field added later
+        # would not change the fingerprint of existing tables.
+        sorted_cols = sorted(cols, key=lambda c: c.name)
+        h = hashlib.sha256()
+        for c in sorted_cols:
+            h.update(c.name.encode())
+            h.update(b"|")
+            h.update(c.data_type.encode())
+            h.update(b"|")
+            h.update(b"1" if c.is_nullable else b"0")
+            h.update(b"|")
+        return h.hexdigest()

@@ -126,3 +126,7 @@ class DatabricksConnector(BaseConnector):
 
     def quote_identifier(self, identifier: str) -> str:
         return f"`{identifier}`"
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # Spark/Databricks HASH returns INT. ABS+MOD buckets it.
+        return f"(ABS(HASH(CAST({qcol} AS STRING))) % {int(modulus)})"

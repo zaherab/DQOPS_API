@@ -131,3 +131,17 @@ class OracleConnector(BaseConnector):
 
     def quote_identifier(self, identifier: str) -> str:
         return f'"{identifier.upper()}"'
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # ORA_HASH is Oracle's row-fingerprint fn; second arg is max bucket
+        # (modulus - 1). Returns 0..modulus-1 directly, no MOD needed.
+        return f"ORA_HASH(TO_CHAR({qcol}), {int(modulus) - 1})"
+
+    def _cast_text_expr(self, qcol: str) -> str:
+        # Oracle CAST AS VARCHAR needs an explicit length; TO_CHAR is the
+        # clean way to stringify any column for LENGTH().
+        return f"TO_CHAR({qcol})"
+
+    def _limit_clause(self, n: int) -> str:
+        # Oracle has no LIMIT — SQL:2008 row-limiting clause (12c+).
+        return f"FETCH FIRST {int(n)} ROWS ONLY"

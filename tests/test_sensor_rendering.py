@@ -241,10 +241,15 @@ class TestSqlConditionSensors:
 
 
 # ---------------------------------------------------------------------------
-# List-to-ARRAY conversion in render()
+# expected_values → portable IN-list in render()
+#
+# In-set sensors render `expected_values` as a plain `IN (...)` list rather
+# than PG `= ANY(ARRAY[...])` — `IN` transpiles cleanly to every dialect.
 # ---------------------------------------------------------------------------
 class TestListConversionInRender:
-    def test_empty_list_gets_typed_cast(self) -> None:
+    def test_empty_list_renders_false_guard(self) -> None:
+        # No expected_values → `1=0` guard keeps the SQL valid (matches
+        # nothing) instead of producing an empty `IN ()`.
         sensor = get_sensor(SensorType.TEXT_IN_SET_PERCENT)
         sql = sensor.render(
             {
@@ -254,9 +259,10 @@ class TestListConversionInRender:
                 "expected_values": [],
             }
         )
-        assert "[]::TEXT[]" in sql
+        assert "1=0" in sql
+        assert "ARRAY" not in sql
 
-    def test_string_list_rendered_as_array(self) -> None:
+    def test_string_list_rendered_as_in_clause(self) -> None:
         sensor = get_sensor(SensorType.TEXT_IN_SET_PERCENT)
         sql = sensor.render(
             {
@@ -266,9 +272,10 @@ class TestListConversionInRender:
                 "expected_values": ["active", "inactive"],
             }
         )
-        assert "ARRAY['active', 'inactive']" in sql
+        assert "IN ('active', 'inactive')" in sql
+        assert "ARRAY" not in sql
 
-    def test_number_list_rendered_as_array(self) -> None:
+    def test_number_list_rendered_as_in_clause(self) -> None:
         sensor = get_sensor(SensorType.NUMBER_IN_SET_PERCENT)
         sql = sensor.render(
             {
@@ -278,7 +285,27 @@ class TestListConversionInRender:
                 "expected_values": [1, 2, 3],
             }
         )
-        assert "ARRAY[1, 2, 3]" in sql
+        assert "IN ('1', '2', '3')" in sql
+        assert "ARRAY" not in sql
+
+    def test_expected_values_escapes_sql_quotes(self) -> None:
+        # SECURITY: expected_values is producer-controlled. A single quote
+        # in a value must be doubled so it can't break out of the string
+        # literal — otherwise it's a SQL injection vector.
+        sensor = get_sensor(SensorType.TEXT_IN_SET_PERCENT)
+        sql = sensor.render(
+            {
+                "schema_name": "public",
+                "table_name": "users",
+                "column_name": "name",
+                "expected_values": ["O'Brien", "x') OR 1=1 --"],
+            }
+        )
+        # Quote doubled — value stays inside the literal.
+        assert "O''Brien" in sql
+        # The injection payload's quote is doubled too, so `OR 1=1`
+        # remains inert text inside the string, not executable SQL.
+        assert "x'') OR 1=1 --" in sql
 
 
 # ---------------------------------------------------------------------------

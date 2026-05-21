@@ -604,6 +604,8 @@ WHERE {{ column_name }}::TEXT ~ '{{ regex_pattern }}'
 {% endif %}
 """,
     default_params={"regex_pattern": ".*"},
+    # SQL Server has no native regex in standard T-SQL (pre-2025).
+    unsupported_dialects=frozenset({"sqlserver"}),
 )
 
 REGEX_NOT_MATCH_COUNT_SENSOR = Sensor(
@@ -620,6 +622,8 @@ WHERE {{ column_name }}::TEXT !~ '{{ regex_pattern }}'
 {% endif %}
 """,
     default_params={"regex_pattern": ".*"},
+    # SQL Server has no native regex in standard T-SQL (pre-2025).
+    unsupported_dialects=frozenset({"sqlserver"}),
 )
 
 # =============================================================================
@@ -709,6 +713,8 @@ WHERE {{ partition_filter }}
 {% endif %}
 """,
     default_params={"regex_pattern": ".*"},
+    # SQL Server has no native regex in standard T-SQL (pre-2025).
+    unsupported_dialects=frozenset({"sqlserver"}),
 )
 
 REGEX_MATCH_PERCENT_SENSOR = Sensor(
@@ -729,6 +735,8 @@ WHERE {{ partition_filter }}
 {% endif %}
 """,
     default_params={"regex_pattern": ".*"},
+    # SQL Server has no native regex in standard T-SQL (pre-2025).
+    unsupported_dialects=frozenset({"sqlserver"}),
 )
 
 TEXT_WORD_COUNT_MIN_SENSOR = Sensor(

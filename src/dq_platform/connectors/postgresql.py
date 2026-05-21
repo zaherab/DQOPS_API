@@ -150,3 +150,9 @@ class PostgreSQLConnector(BaseConnector):
             )
             for row in results
         ]
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # PG's HASHTEXT is an internal hashing fn used by hash indexes.
+        # It's stable within a release and well-distributed. ABS+MOD gives
+        # a deterministic bucket per row.
+        return f"(ABS(HASHTEXT(CAST({qcol} AS TEXT))) % {int(modulus)})"
