@@ -117,3 +117,6 @@ class DuckDBConnector(BaseConnector):
             )
             for row in results
         ]
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        return f"(HASH(CAST({qcol} AS VARCHAR)) % {int(modulus)})"

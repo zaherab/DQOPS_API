@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from dq_platform.checks.check_runner import run_check
+from dq_platform.checks.dqops_executor import SensorUnsupportedError
 from dq_platform.config import get_settings
 from dq_platform.models.check import Check
 from dq_platform.models.incident import Incident, IncidentStatus
@@ -159,6 +160,23 @@ async def _execute_check_async(task: Any, job_id: str) -> dict[str, Any]:
                 "passed": execution_result["passed"],
                 "severity": execution_result.get("severity"),
                 "result_id": str(check_result.id),
+            }
+
+        except SensorUnsupportedError as exc:
+            # Genuine engine limitation, not a failure — the check can't
+            # run on this dialect (e.g. regex on SQL Server). Complete the
+            # job with no result row and no retry; the dimension scorer
+            # then treats the check as not_assessed.
+            logger.info("check skipped — sensor unsupported on dialect: %s", exc)
+            job.status = JobStatus.COMPLETED
+            job.error_message = f"skipped: {exc}"
+            job.completed_at = datetime.now(UTC)
+            await db.commit()
+            return {
+                "status": "skipped",
+                "job_id": job_id,
+                "check_id": str(check.id),
+                "reason": str(exc),
             }
 
         except Exception as exc:

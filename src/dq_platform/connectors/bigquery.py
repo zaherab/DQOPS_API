@@ -133,3 +133,12 @@ class BigQueryConnector(BaseConnector):
     def quote_identifier(self, identifier: str) -> str:
         """Quote an identifier using BigQuery backticks."""
         return f"`{identifier}`"
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # FARM_FINGERPRINT is BigQuery's recommended row-level sampling
+        # hash. Output is a stable int64. MOD is a FUNCTION in BigQuery,
+        # not an infix operator — MOD(x, y), not `x MOD y`.
+        return f"MOD(ABS(FARM_FINGERPRINT(CAST({qcol} AS STRING))), {int(modulus)})"
+
+    def _cast_text_expr(self, qcol: str) -> str:
+        return f"CAST({qcol} AS STRING)"

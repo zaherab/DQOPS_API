@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+import sqlglot
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +13,80 @@ from dq_platform.checks.rules import Severity, evaluate_rule
 from dq_platform.checks.sensors import QUOTE_CHARS, get_sensor
 from dq_platform.connectors.base import BaseConnector
 from dq_platform.connectors.factory import ConnectorFactory
+from dq_platform.core.metrics import (
+    SENSOR_TRANSPILE_FAILURES,
+    SENSOR_TRANSPILE_OK,
+    SENSOR_UNSUPPORTED_SKIPS,
+    metrics,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class SensorUnsupportedError(Exception):
+    """A sensor cannot run on the connection's dialect.
+
+    Raised for genuine engine limitations (e.g. regex on SQL Server, which
+    has no native T-SQL regex). The worker treats this as a clean skip —
+    the check is recorded not_assessed, never retried.
+    """
+
+    def __init__(self, sensor_name: str, dialect: str) -> None:
+        self.sensor_name = sensor_name
+        self.dialect = dialect
+        super().__init__(f"sensor '{sensor_name}' is not supported on dialect '{dialect}'")
+
+
+# Sensor SQL templates are authored in PostgreSQL syntax (`::FLOAT` casts,
+# `STRING_AGG`, etc.). For non-PG engines the rendered SQL is transpiled
+# with sqlglot to the target dialect just before execution.
+#
+# Postgres and DuckDB are NOT transpiled — DuckDB is PG-syntax-compatible
+# for the sensor subset, and PG is the source dialect. Both are verified
+# to run sensor SQL directly.
+_SQLGLOT_DIALECT: dict[str, str] = {
+    "postgresql": "postgres",
+    "redshift": "redshift",
+    "mysql": "mysql",
+    "sqlserver": "tsql",
+    "oracle": "oracle",
+    "bigquery": "bigquery",
+    "snowflake": "snowflake",
+    "databricks": "databricks",
+    "duckdb": "duckdb",
+}
+
+# Engines whose sensor SQL runs without transpilation.
+_NO_TRANSPILE = {"postgresql", "duckdb", ""}
+
+
+def _transpile_sensor_sql(sql: str, conn_type: str) -> str:
+    """Transpile Postgres-authored sensor SQL to the connection's dialect.
+
+    Returns the SQL unchanged for Postgres/DuckDB, on unknown dialects, or
+    if sqlglot can't parse the statement — transpilation only ever helps,
+    never breaks the engines that already work.
+    """
+    if conn_type in _NO_TRANSPILE:
+        return sql
+    target = _SQLGLOT_DIALECT.get(conn_type)
+    if not target:
+        return sql
+    try:
+        out = sqlglot.transpile(sql, read="postgres", write=target)
+        metrics.incr(SENSOR_TRANSPILE_OK)
+        return out[0] if out else sql
+    except Exception as err:  # noqa: BLE001 - fall back to raw SQL
+        # Silent fallback would mask a portability regression. Count it so
+        # /metrics surfaces a rising failure rate, and log loud + structured.
+        metrics.incr(SENSOR_TRANSPILE_FAILURES)
+        logger.warning(
+            "sensor SQL transpile failed (%s): %s | SQL: %s",
+            conn_type,
+            err,
+            sql[:200].replace("\n", " "),
+        )
+        return sql
 
 
 @dataclass
@@ -94,13 +167,30 @@ class DQOpsExecutor:
         if rule_params:
             sensor_params.update(rule_params)
 
-        # Determine quote character from connection type if not explicitly provided
-        if quote_char is None:
-            conn_type = connection_config.get("type", "")
-            quote_char = QUOTE_CHARS.get(conn_type, '"')
+        # Determine the connection's dialect.
+        conn_type = connection_config.get("type", "") or connection_config.get("connection_type", "")
 
-        # Render SQL
-        sql = sensor.render(sensor_params, quote_char=quote_char)
+        # Genuine engine limitation (e.g. regex on SQL Server) → clean skip.
+        if not sensor.supports(conn_type):
+            metrics.incr(SENSOR_UNSUPPORTED_SKIPS)
+            raise SensorUnsupportedError(str(sensor.name), conn_type)
+
+        # SQL rendering, three paths:
+        #  - dialect_templates override → already native, render with the
+        #    native quote char, no transpilation.
+        #  - PG / DuckDB              → base template, native quote, no transpile.
+        #  - everything else         → base template rendered with Postgres
+        #    quotes, then transpiled (incl. quoting) to the target dialect.
+        has_dialect_template = conn_type in sensor.dialect_templates
+        needs_transpile = conn_type not in _NO_TRANSPILE and not has_dialect_template
+        if quote_char is None:
+            quote_char = '"' if needs_transpile else QUOTE_CHARS.get(conn_type, '"')
+
+        sql = sensor.render(sensor_params, quote_char=quote_char, dialect=conn_type)
+
+        # Transpile Postgres-authored sensor SQL to the target dialect.
+        if needs_transpile:
+            sql = _transpile_sensor_sql(sql, conn_type)
 
         # Execute sensor SQL
         sensor_value = await self._execute_sensor_sql(
@@ -118,6 +208,7 @@ class DQOpsExecutor:
             table_name=table_name,
             partition_filter=partition_filter,
             quote_char=quote_char,
+            conn_type=conn_type,
         )
 
         # Build rule parameters
@@ -186,7 +277,11 @@ class DQOpsExecutor:
             return None
 
         except Exception:
-            logger.error("Sensor SQL execution failed", extra={"sql": sql}, exc_info=True)
+            logger.error(
+                "Sensor SQL execution failed | SQL: %s",
+                sql.replace("\n", " "),
+                exc_info=True,
+            )
             raise
 
         finally:
@@ -200,6 +295,7 @@ class DQOpsExecutor:
         table_name: str,
         partition_filter: str | None,
         quote_char: str,
+        conn_type: str = "",
     ) -> int | None:
         """Return row count of the target table (with partition filter if any).
 
@@ -209,6 +305,10 @@ class DQOpsExecutor:
         q = quote_char
         where = f" WHERE {partition_filter}" if partition_filter else ""
         sql = f"SELECT COUNT(*) AS sensor_value FROM {q}{schema_name}{q}.{q}{table_name}{q}{where}"
+        # Match the dialect handling of the sensor SQL — a "-quoted count
+        # query must be transpiled for engines like MySQL.
+        if conn_type not in _NO_TRANSPILE:
+            sql = _transpile_sensor_sql(sql, conn_type)
         try:
             value = await self._execute_sensor_sql(
                 connection_config=connection_config,

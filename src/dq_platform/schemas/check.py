@@ -158,6 +158,14 @@ class CheckTypeInfo(BaseModel):
     description: str
     is_column_level: bool
     category: str | None = None
+    # Resolved ODPS dimension for this check type. This is the *only*
+    # authoritative check_type → dimension source: it already accounts for
+    # per-check-type overrides (e.g. column_count → conformity) that a plain
+    # category → dimension lookup misses. External orchestrators (MLG) must
+    # consult this rather than re-deriving the dimension from `category`,
+    # otherwise their orphan detection disagrees with the engine and churns
+    # checks. None for anomaly/advisory checks that are never scored.
+    dimension: str | None = None
     # Exposed so external orchestrators (e.g. MLG) can generate correctly-
     # shaped rule_parameters without hardcoding per-check-type logic.
     rule_type: str | None = None

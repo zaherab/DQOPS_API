@@ -168,3 +168,17 @@ async def health_check(request: Request) -> Response:
 
     status_code = 200 if health_status["status"] == "healthy" else 503
     return JSONResponse(content=health_status, status_code=status_code)
+
+
+@app.get("/metrics")
+@limiter.limit("60/minute")
+async def metrics_endpoint(request: Request) -> Response:
+    """In-process metric counters for this serving process.
+
+    Includes sensor transpilation health — `sensor_transpile_failures`
+    rising indicates a SQL-portability regression. Counters are per
+    process; an aggregator sums across pods/workers.
+    """
+    from dq_platform.core.metrics import metrics as _metrics
+
+    return JSONResponse(content={"counters": _metrics.snapshot()})

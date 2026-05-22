@@ -176,3 +176,21 @@ class SQLServerConnector(BaseConnector):
     def quote_identifier(self, identifier: str) -> str:
         """Quote an identifier using SQL Server brackets."""
         return f"[{identifier}]"
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # CHECKSUM returns INT; ABS+MOD buckets it. Distribution is
+        # decent for sampling though weak vs HASHBYTES — fine here.
+        return f"(ABS(CHECKSUM(CAST({qcol} AS NVARCHAR(MAX)))) % {int(modulus)})"
+
+    def _cast_text_expr(self, qcol: str) -> str:
+        # Bare VARCHAR defaults to VARCHAR(30) on SQL Server and truncates.
+        return f"CAST({qcol} AS VARCHAR(MAX))"
+
+    def _limit_clause(self, n: int) -> str:
+        # SQL Server: OFFSET/FETCH requires an ORDER BY (always present in
+        # build_sample_sql). TOP would also work but can't follow ORDER BY.
+        return f"OFFSET 0 ROWS FETCH NEXT {int(n)} ROWS ONLY"
+
+    def _text_length_expr(self, text_expr: str) -> str:
+        # SQL Server has no LENGTH — LEN returns character count.
+        return f"LEN({text_expr})"

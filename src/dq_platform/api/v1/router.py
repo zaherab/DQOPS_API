@@ -9,6 +9,7 @@ from dq_platform.api.v1 import (
     incidents,
     jobs,
     notifications,
+    profile_routes,
     results,
     schedules,
 )
@@ -23,3 +24,4 @@ api_router.include_router(incidents.router, prefix="/incidents", tags=["incident
 api_router.include_router(schedules.router, prefix="/schedules", tags=["schedules"])
 api_router.include_router(notifications.router, prefix="/notifications/channels", tags=["notifications"])
 api_router.include_router(dimensions.router, prefix="/dimensions", tags=["dimensions"])
+api_router.include_router(profile_routes.router, prefix="", tags=["profile"])

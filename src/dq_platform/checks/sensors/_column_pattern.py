@@ -1,6 +1,33 @@
 """Pattern/detection column-level sensor definitions."""
 
+import json
+from pathlib import Path
+
 from dq_platform.checks.sensors._base import Sensor, SensorType
+
+# Bundled ISO codelists — reused by the country/currency code sensors so
+# they validate against the *real* standard (membership), not just a
+# `^[A-Z]{2}$` shape regex which would pass invalid codes like "ZZ".
+_CODELIST_DIR = Path(__file__).resolve().parents[2] / "profilers" / "data"
+
+
+def _load_codes(filename: str) -> list[str]:
+    with (_CODELIST_DIR / filename).open() as f:
+        codes: list[str] = json.load(f)["codes"]
+    return codes
+
+
+_ISO_3166 = _load_codes("iso3166_alpha2.json")
+_ISO_4217 = _load_codes("iso4217.json")
+
+# Reusable IN-membership CASE fragment — portable (no regex, no casts),
+# runs on every dialect. `expected_values` is escaped + kept as a list by
+# Sensor.render (see the expected_values special-case there).
+_IN_SET_CASE = (
+    "{% if expected_values %}UPPER({{ column_name }}) IN "
+    "({% for v in expected_values %}'{{ v }}'"
+    "{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}"
+)
 
 # =============================================================================
 # Pattern/Format Sensors (Column-level)
@@ -417,6 +444,10 @@ WHERE {{ partition_filter }}
 # Phase 4: Accepted Values & Domain Sensors (Column-level)
 # =============================================================================
 
+# In-set sensors use a plain `IN (...)` list, not PG `= ANY(ARRAY[...])`.
+# `IN` is universal SQL — it transpiles cleanly to every dialect, whereas
+# `ANY(ARRAY[...])` has no MySQL/SQL Server equivalent. The empty-set guard
+# `1=0` keeps the SQL valid when no expected_values are configured.
 TEXT_IN_SET_PERCENT_SENSOR = Sensor(
     name=SensorType.TEXT_IN_SET_PERCENT,
     description="Percentage of text values found in expected set",
@@ -426,7 +457,7 @@ SELECT
     CASE
         WHEN COUNT(*) = 0 THEN 100.0
         ELSE (SUM(CASE
-            WHEN {{ column_name }}::TEXT = ANY(ARRAY{{ expected_values }})
+            WHEN {% if expected_values %}{{ column_name }} IN ({% for v in expected_values %}'{{ v }}'{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -446,7 +477,7 @@ SELECT
     CASE
         WHEN COUNT(*) = 0 THEN 100.0
         ELSE (SUM(CASE
-            WHEN {{ column_name }}::TEXT = ANY(ARRAY{{ expected_values }})
+            WHEN {% if expected_values %}{{ column_name }} IN ({% for v in expected_values %}'{{ v }}'{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -462,9 +493,9 @@ EXPECTED_TEXT_IN_USE_COUNT_SENSOR = Sensor(
     description="Count of expected text values actually found in column",
     is_column_level=True,
     template="""
-SELECT COUNT(DISTINCT {{ column_name }}::TEXT) as sensor_value
+SELECT COUNT(DISTINCT {{ column_name }}) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT = ANY(ARRAY{{ expected_values }})
+WHERE {% if expected_values %}{{ column_name }} IN ({% for v in expected_values %}'{{ v }}'{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}
 {% if partition_filter %}
   AND {{ partition_filter }}
 {% endif %}
@@ -479,7 +510,7 @@ EXPECTED_NUMBER_IN_USE_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(DISTINCT {{ column_name }}) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
-WHERE {{ column_name }}::TEXT = ANY(ARRAY{{ expected_values }})
+WHERE {% if expected_values %}{{ column_name }} IN ({% for v in expected_values %}'{{ v }}'{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}
 {% if partition_filter %}
   AND {{ partition_filter }}
 {% endif %}
@@ -492,9 +523,9 @@ EXPECTED_TEXTS_TOP_N_COUNT_SENSOR = Sensor(
     description="Count of expected values that appear in top N most common values",
     is_column_level=True,
     template="""
-SELECT COUNT(DISTINCT {{ column_name }}::TEXT) as sensor_value
+SELECT COUNT(DISTINCT v) as sensor_value
 FROM (
-    SELECT {{ column_name }}::TEXT, COUNT(*) as cnt
+    SELECT {{ column_name }} AS v, COUNT(*) as cnt
     FROM {{ schema_name }}.{{ table_name }}
     {% if partition_filter %}
     WHERE {{ partition_filter }}
@@ -503,21 +534,23 @@ FROM (
     ORDER BY cnt DESC
     LIMIT {{ top_n }}
 ) t
-WHERE {{ column_name }}::TEXT = ANY(ARRAY{{ expected_values }})
+WHERE {% if expected_values %}v IN ({% for val in expected_values %}'{{ val }}'{% if not loop.last %}, {% endif %}{% endfor %}){% else %}1=0{% endif %}
 """,
     default_params={"expected_values": [], "top_n": 10},
 )
 
 VALID_COUNTRY_CODE_PERCENT_SENSOR = Sensor(
     name=SensorType.VALID_COUNTRY_CODE_PERCENT,
-    description="Percentage of valid ISO country codes",
+    description="Percentage of valid ISO 3166-1 alpha-2 country codes",
     is_column_level=True,
     template="""
 SELECT
     CASE
         WHEN COUNT(*) = 0 THEN 100.0
         ELSE (SUM(CASE
-            WHEN UPPER({{ column_name }}::TEXT) ~ '^[A-Z]{2}$'
+            WHEN """
+    + _IN_SET_CASE
+    + """
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -525,18 +558,21 @@ FROM {{ schema_name }}.{{ table_name }}
 WHERE {{ partition_filter }}
 {% endif %}
 """,
+    default_params={"expected_values": _ISO_3166},
 )
 
 VALID_CURRENCY_CODE_PERCENT_SENSOR = Sensor(
     name=SensorType.VALID_CURRENCY_CODE_PERCENT,
-    description="Percentage of valid ISO currency codes",
+    description="Percentage of valid ISO 4217 currency codes",
     is_column_level=True,
     template="""
 SELECT
     CASE
         WHEN COUNT(*) = 0 THEN 100.0
         ELSE (SUM(CASE
-            WHEN UPPER({{ column_name }}::TEXT) ~ '^[A-Z]{3}$'
+            WHEN """
+    + _IN_SET_CASE
+    + """
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
@@ -544,6 +580,7 @@ FROM {{ schema_name }}.{{ table_name }}
 WHERE {{ partition_filter }}
 {% endif %}
 """,
+    default_params={"expected_values": _ISO_4217},
 )
 
 # =============================================================================

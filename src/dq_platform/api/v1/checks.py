@@ -22,6 +22,7 @@ from dq_platform.checks.gx_registry import (
 )
 from dq_platform.core.security import verify_api_key
 from dq_platform.models.check import CheckMode, CheckTimeScale, CheckType
+from dq_platform.odps.dimension_mapping import get_dimension_for_check_type
 from dq_platform.schemas.check import (
     BatchRunRequest,
     CheckCreate,
@@ -122,12 +123,14 @@ async def list_check_types(
 
     # Add DQOps checks
     for check in dqops_checks:
+        resolved_dim = get_dimension_for_check_type(check.name)
         check_types.append(
             CheckTypeInfo(
                 type=check.name,
                 description=check.description,
                 is_column_level=check.is_column_level,
                 category=check.category,
+                dimension=resolved_dim.value if resolved_dim else None,
                 rule_type=check.rule_type.value if check.rule_type else None,
                 default_params=check.default_params or None,
             )
@@ -144,12 +147,14 @@ async def list_check_types(
                 try:
                     is_col_level = is_column_level_check(check_type)
                     description = get_check_description(check_type)
+                    resolved_dim = get_dimension_for_check_type(check_type.value)
                     check_types.append(
                         CheckTypeInfo(
                             type=check_type.value,
                             description=description,
                             is_column_level=is_col_level,
                             category=None,
+                            dimension=resolved_dim.value if resolved_dim else None,
                         )
                     )
                 except ValueError:

@@ -1,0 +1,160 @@
+{
+  "_comment": "Shared fixture suite for promise→rule_parameters projection. Consumed by both dq-platform/tests/profilers/test_threshold_engine.py (Python) and MLG-Spec-Reader/server/__tests__/dq-promise-thresholds.shared.test.ts (TS). Adding cases requires both implementations to agree. Path from repo root differs per repo; the TS test resolves via ../../../dq-platform/tests/fixtures/threshold_cases.json.",
+  "cases": [
+    {
+      "name": "min_percent_95",
+      "rule_type": "min_percent",
+      "promise": "95",
+      "expected": {
+        "warning": {"min_percent": 97},
+        "error": {"min_percent": 95}
+      }
+    },
+    {
+      "name": "min_percent_100",
+      "rule_type": "min_percent",
+      "promise": "100%",
+      "expected": {
+        "warning": {"min_percent": 100},
+        "error": {"min_percent": 100}
+      }
+    },
+    {
+      "name": "max_percent_nulls_99",
+      "rule_type": "max_percent",
+      "promise": "99",
+      "expected": {
+        "warning": {"max_percent": 0},
+        "error": {"max_percent": 1}
+      }
+    },
+    {
+      "name": "max_percent_95",
+      "rule_type": "max_percent",
+      "promise": "95",
+      "expected": {
+        "warning": {"max_percent": 3},
+        "error": {"max_percent": 5}
+      }
+    },
+    {
+      "name": "min_max_percent_distinct_100",
+      "rule_type": "min_max_percent",
+      "promise": "100",
+      "expected": {
+        "warning": {"min_percent": 100, "max_percent": 100},
+        "error": {"min_percent": 100, "max_percent": 100}
+      }
+    },
+    {
+      "name": "max_count_99_zero_tolerance",
+      "rule_type": "max_count",
+      "promise": "99",
+      "expected": {
+        "error": {"max_count": 0}
+      }
+    },
+    {
+      "name": "max_count_95_no_map",
+      "rule_type": "max_count",
+      "promise": "95",
+      "expected": null
+    },
+    {
+      "name": "max_change_percent_98",
+      "rule_type": "max_change_percent",
+      "promise": "98",
+      "expected": {
+        "warning": {"max_change_percent": 0},
+        "error": {"max_change_percent": 2}
+      }
+    },
+    {
+      "name": "max_value_freshness_24h",
+      "rule_type": "max_value",
+      "promise": "24h",
+      "expected": {
+        "warning": {"max_value": 86400.0},
+        "error": {"max_value": 129600.0}
+      }
+    },
+    {
+      "name": "max_value_freshness_1h",
+      "rule_type": "max_value",
+      "promise": "1h",
+      "expected": {
+        "warning": {"max_value": 3600.0},
+        "error": {"max_value": 7200.0}
+      }
+    },
+    {
+      "name": "max_value_freshness_5min",
+      "rule_type": "max_value",
+      "promise": "5min",
+      "expected": {
+        "warning": {"max_value": 300.0},
+        "error": {"max_value": 3900.0}
+      }
+    },
+    {
+      "name": "min_count_returns_none",
+      "rule_type": "min_count",
+      "promise": "100",
+      "expected": null
+    },
+    {
+      "name": "min_value_returns_none",
+      "rule_type": "min_value",
+      "promise": "5",
+      "expected": null
+    },
+    {
+      "name": "equal_to_returns_none",
+      "rule_type": "equal_to",
+      "promise": "10",
+      "expected": null
+    },
+    {
+      "name": "is_true_returns_none",
+      "rule_type": "is_true",
+      "promise": "100",
+      "expected": null
+    },
+    {
+      "name": "anomaly_percentile_returns_none",
+      "rule_type": "anomaly_percentile",
+      "promise": "95",
+      "expected": null
+    },
+    {
+      "name": "unknown_rule_type_returns_none",
+      "rule_type": "made_up_rule",
+      "promise": "50",
+      "expected": null
+    },
+    {
+      "name": "invalid_promise_negative",
+      "rule_type": "min_percent",
+      "promise": "-5%",
+      "expected": null
+    },
+    {
+      "name": "invalid_promise_over_100",
+      "rule_type": "max_percent",
+      "promise": "150",
+      "expected": null
+    },
+    {
+      "name": "null_promise",
+      "rule_type": "min_percent",
+      "promise": null,
+      "expected": null
+    },
+    {
+      "name": "null_rule_type",
+      "rule_type": null,
+      "promise": "95",
+      "expected": null
+    }
+  ]
+}

@@ -119,6 +119,11 @@ CROSS JOIN previous_count p
 # Schema Sensors (Table-level)
 # =============================================================================
 
+# Catalog sensors query the column catalog. ANSI `information_schema`
+# covers PG/MySQL/SQL Server/Snowflake/Redshift/DuckDB; Oracle has no
+# information_schema and uses ALL_TAB_COLUMNS (owner/table_name uppercased).
+# The `{{ raw_* }}` params carry the un-quoted names for use as string
+# literals — see Sensor.render which exposes raw_schema/raw_table/raw_column.
 COLUMN_COUNT_SENSOR = Sensor(
     name=SensorType.COLUMN_COUNT,
     description="Count of columns in the table",
@@ -126,9 +131,17 @@ COLUMN_COUNT_SENSOR = Sensor(
     template="""
 SELECT COUNT(*) as sensor_value
 FROM information_schema.columns
-WHERE table_schema = '{{ schema_name }}'
-  AND table_name = '{{ table_name }}'
+WHERE table_schema = '{{ raw_schema_name }}'
+  AND table_name = '{{ raw_table_name }}'
 """,
+    dialect_templates={
+        "oracle": """
+SELECT COUNT(*) as sensor_value
+FROM all_tab_columns
+WHERE owner = UPPER('{{ raw_schema_name }}')
+  AND table_name = UPPER('{{ raw_table_name }}')
+""",
+    },
 )
 
 COLUMN_EXISTS_SENSOR = Sensor(
@@ -139,29 +152,67 @@ COLUMN_EXISTS_SENSOR = Sensor(
 SELECT CASE WHEN EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = '{{ schema_name }}'
-      AND table_name = '{{ table_name }}'
-      AND column_name = '{{ column_name }}'
+    WHERE table_schema = '{{ raw_schema_name }}'
+      AND table_name = '{{ raw_table_name }}'
+      AND column_name = '{{ raw_column_name }}'
 ) THEN 1 ELSE 0 END as sensor_value
 """,
+    dialect_templates={
+        "oracle": """
+SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM all_tab_columns
+    WHERE owner = UPPER('{{ raw_schema_name }}')
+      AND table_name = UPPER('{{ raw_table_name }}')
+      AND column_name = UPPER('{{ raw_column_name }}')
+) THEN 1 ELSE 0 END as sensor_value
+FROM dual
+""",
+    },
 )
 
 # =============================================================================
 # Timeliness Sensors (Table-level)
 # =============================================================================
 
-DATA_FRESHNESS_SENSOR = Sensor(
-    name=SensorType.DATA_FRESHNESS,
-    description="Seconds since the most recent row (based on timestamp column)",
-    is_column_level=True,
-    template="""
-SELECT
-    EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX({{ column_name }})))::BIGINT as sensor_value
+# "Seconds since the most recent row" has no portable spelling — every
+# engine computes a timestamp delta differently and sqlglot can't bridge
+# `EXTRACT(EPOCH FROM interval)`. Base template is Postgres; the rest get
+# explicit per-dialect templates (used verbatim, no transpilation).
+_FRESHNESS_BODY = """
 FROM {{ schema_name }}.{{ table_name }}
 {% if partition_filter %}
 WHERE {{ partition_filter }}
 {% endif %}
-""",
+"""
+
+DATA_FRESHNESS_SENSOR = Sensor(
+    name=SensorType.DATA_FRESHNESS,
+    description="Seconds since the most recent row (based on timestamp column)",
+    is_column_level=True,
+    template=(
+        "SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MAX({{ column_name }})))::BIGINT "
+        "as sensor_value" + _FRESHNESS_BODY
+    ),
+    dialect_templates={
+        "mysql": ("SELECT TIMESTAMPDIFF(SECOND, MAX({{ column_name }}), NOW()) as sensor_value" + _FRESHNESS_BODY),
+        "sqlserver": ("SELECT DATEDIFF(SECOND, MAX({{ column_name }}), GETDATE()) as sensor_value" + _FRESHNESS_BODY),
+        "redshift": ("SELECT DATEDIFF(SECOND, MAX({{ column_name }}), GETDATE()) as sensor_value" + _FRESHNESS_BODY),
+        "snowflake": (
+            "SELECT DATEDIFF(SECOND, MAX({{ column_name }}), CURRENT_TIMESTAMP()) as sensor_value" + _FRESHNESS_BODY
+        ),
+        "bigquery": (
+            "SELECT TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX({{ column_name }}), SECOND) "
+            "as sensor_value" + _FRESHNESS_BODY
+        ),
+        "oracle": (
+            "SELECT (CAST(SYSTIMESTAMP AS DATE) - CAST(MAX({{ column_name }}) AS DATE)) "
+            "* 86400 as sensor_value" + _FRESHNESS_BODY
+        ),
+        "databricks": (
+            "SELECT (UNIX_TIMESTAMP(CURRENT_TIMESTAMP()) "
+            "- UNIX_TIMESTAMP(MAX({{ column_name }}))) as sensor_value" + _FRESHNESS_BODY
+        ),
+    },
 )
 
 DATA_STALENESS_SENSOR = Sensor(
@@ -515,23 +566,48 @@ WHERE {{ sql_condition }}
 # Phase 10: Schema Detection Sensors (Table-level)
 # =============================================================================
 
+# The empty-baseline branch uses a Jinja `{% if %}` — NOT a SQL
+# `'{{ x }}' = ''` test. Oracle treats '' as NULL, so `'' = ''` is NULL
+# (not TRUE) and the check would wrongly report drift. Deciding at render
+# time sidesteps every dialect's empty-string semantics.
 COLUMN_LIST_HASH_SENSOR = Sensor(
     name=SensorType.COLUMN_LIST_HASH,
     description="Hash of sorted column list (detects if columns added/removed)",
     is_column_level=False,
     template="""
+{% if expected_hash %}
 WITH current_cols AS (
     SELECT MD5(STRING_AGG(column_name, ',' ORDER BY column_name)) as col_hash
     FROM information_schema.columns
-    WHERE table_schema = '{{ schema_name }}' AND table_name = '{{ table_name }}'
+    WHERE table_schema = '{{ raw_schema_name }}' AND table_name = '{{ raw_table_name }}'
 )
-SELECT CASE
-    WHEN '{{ expected_hash | default("") }}' = '' THEN 0
-    WHEN c.col_hash = '{{ expected_hash }}' THEN 0
-    ELSE 1
-END as sensor_value
+SELECT CASE WHEN c.col_hash = '{{ expected_hash }}' THEN 0 ELSE 1 END as sensor_value
 FROM current_cols c
+{% else %}
+SELECT 0 as sensor_value
+{% endif %}
 """,
+    # Oracle: no information_schema (→ all_tab_columns), no STRING_AGG
+    # (→ LISTAGG ... WITHIN GROUP), no MD5 (→ STANDARD_HASH + RAWTOHEX).
+    # The no-baseline branch needs FROM dual.
+    dialect_templates={
+        "oracle": """
+{% if expected_hash %}
+WITH current_cols AS (
+    SELECT RAWTOHEX(STANDARD_HASH(
+        LISTAGG(column_name, ',') WITHIN GROUP (ORDER BY column_name), 'MD5'
+    )) as col_hash
+    FROM all_tab_columns
+    WHERE owner = UPPER('{{ raw_schema_name }}')
+      AND table_name = UPPER('{{ raw_table_name }}')
+)
+SELECT CASE WHEN c.col_hash = '{{ expected_hash }}' THEN 0 ELSE 1 END as sensor_value
+FROM current_cols c
+{% else %}
+SELECT 0 as sensor_value FROM dual
+{% endif %}
+""",
+    },
     default_params={"expected_hash": ""},
 )
 

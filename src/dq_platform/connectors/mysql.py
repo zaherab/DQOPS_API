@@ -143,3 +143,11 @@ class MySQLConnector(BaseConnector):
     def quote_identifier(self, identifier: str) -> str:
         """Quote an identifier using MySQL backticks."""
         return f"`{identifier}`"
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # CRC32 is fast and well-distributed enough for sampling.
+        return f"(CRC32(CAST({qcol} AS CHAR)) % {int(modulus)})"
+
+    def _cast_text_expr(self, qcol: str) -> str:
+        # MySQL CAST has no VARCHAR target type — use CHAR.
+        return f"CAST({qcol} AS CHAR)"

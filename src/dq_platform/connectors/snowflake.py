@@ -140,3 +140,8 @@ class SnowflakeConnector(BaseConnector):
             )
             for row in results
         ]
+
+    def _hash_mod_expr(self, qcol: str, modulus: int) -> str:
+        # Snowflake HASH is a 64-bit hash on any type. ABS+MOD is stable
+        # across runs at session-default collation.
+        return f"(ABS(HASH({qcol})) % {int(modulus)})"
