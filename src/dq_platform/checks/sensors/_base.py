@@ -318,6 +318,13 @@ def _strip_python_comments(sql: str) -> str:
 
 
 # Mapping of connection types to their identifier quote characters
+# Sensor params that render inside a SQL string literal (`'{{ x }}'`) and
+# carry producer-controlled content — single quotes must be doubled before
+# templating. Identifier params (schema/table/column) are handled
+# separately via _quote_identifier; numeric params need no escaping.
+_STRING_LITERAL_PARAMS: frozenset[str] = frozenset({"regex_pattern", "expected_type"})
+
+
 QUOTE_CHARS: dict[str, str] = {
     "mysql": "`",
     "bigquery": "`",
@@ -410,6 +417,17 @@ class Sensor:
                 safe_params[key] = [str(v).replace("'", "''") for v in val]
             elif isinstance(val, list):
                 safe_params[key] = _list_to_sql_array(val)
+
+        # SECURITY: producer-controlled params that land inside SQL string
+        # literals (e.g. `'{{ regex_pattern }}'`). Jinja does not escape SQL
+        # quotes — a value containing `'` would break out of the literal
+        # (SQL injection). `regex_pattern` comes from the contentSchema
+        # `pattern` declaration or an inferred regex; both can contain a
+        # quote. Double single quotes so the value stays inside the literal.
+        for key in _STRING_LITERAL_PARAMS:
+            v = safe_params.get(key)
+            if isinstance(v, str):
+                safe_params[key] = v.replace("'", "''")
 
         # Expose un-quoted copies as raw_* — catalog sensors need the bare
         # name as a STRING LITERAL (e.g. WHERE table_name = 'orders'),

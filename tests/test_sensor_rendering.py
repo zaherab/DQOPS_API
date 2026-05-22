@@ -307,6 +307,25 @@ class TestListConversionInRender:
         # remains inert text inside the string, not executable SQL.
         assert "x'') OR 1=1 --" in sql
 
+    def test_regex_pattern_escapes_sql_quotes(self) -> None:
+        # SECURITY: regex_pattern comes from the contentSchema `pattern`
+        # declaration (producer-controlled) or an inferred regex. It renders
+        # inside a SQL string literal `'{{ regex_pattern }}'` — a single
+        # quote must be doubled or it breaks out (SQL injection).
+        sensor = get_sensor(SensorType.REGEX_MATCH_PERCENT)
+        sql = sensor.render(
+            {
+                "schema_name": "public",
+                "table_name": "users",
+                "column_name": "name",
+                "regex_pattern": "x' OR '1'='1",
+            }
+        )
+        # Every quote in the payload is doubled — stays inside the literal.
+        assert "x'' OR ''1''=''1" in sql
+        # The raw un-escaped break-out form must NOT appear.
+        assert "'x' OR '1'='1'" not in sql
+
 
 # ---------------------------------------------------------------------------
 # Reference identifier quoting
