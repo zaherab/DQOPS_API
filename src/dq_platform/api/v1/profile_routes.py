@@ -95,6 +95,10 @@ class ProfileResponse(BaseModel):
     inferences: dict[str, InferenceResp]
     schema_fingerprint: str | None
     cached_sample: bool
+    # Declared fields absent from the physical table (schema drift). Profiled
+    # fields skip these; the caller should drop them before emitting checks so
+    # it never registers a check against a non-existent column.
+    missing_columns: list[str] = []
 
 
 class FieldDeclarationBody(BaseModel):
@@ -160,6 +164,25 @@ async def run_profile_endpoint(
 
 
 async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileResponse:
+    # Resolve the live column set first. A declared field that no longer
+    # exists in the physical table (schema drift — column renamed/dropped)
+    # must not blow up the whole profile + sample run. Profile the columns
+    # that exist, report the rest as missing.
+    fields = body.fields
+    missing_columns: list[str] = []
+    try:
+        # Exact-name membership. The declared name is reused verbatim as a
+        # quoted identifier in the profile/sample SQL, so a case-mismatched
+        # name is unusable anyway — treating it as missing (drop it) is the
+        # safe outcome, vs. keeping it and failing the whole query.
+        live_cols = {c.name for c in connector.get_columns(body.schema_name, body.table)}
+        fields = [f for f in body.fields if f.name in live_cols]
+        missing_columns = [f.name for f in body.fields if f.name not in live_cols]
+    except Exception:
+        # Schema introspection unavailable (permission/network). Fall back to
+        # profiling every declared field — no regression vs prior behaviour.
+        fields = body.fields
+
     # Profile (aggregate round-trip).
     field_specs = [
         FieldProfileSpec(
@@ -167,7 +190,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
             logical_type=f.logical_type,
             classification=f.classification,
         )
-        for f in body.fields
+        for f in fields
     ]
     profile_sql = connector.build_profile_sql(
         body.schema_name,
@@ -178,7 +201,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
                 "logical_type": f.logical_type,
                 "classification": f.classification,
             }
-            for f in body.fields
+            for f in fields
         ],
     )
     async with audit(
@@ -196,7 +219,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
     # field is text-shaped — otherwise inference has no work to do.
     cached = False
     rows: list[dict[str, Any]] = []
-    if body.pk and any(f.sample_needed and f.classification != "PII" for f in body.fields):
+    if body.pk and any(f.sample_needed and f.classification != "PII" for f in fields):
         cache = get_sample_cache()
         cache_key = CacheKey(
             org_id=body.org_id,
@@ -211,8 +234,8 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         if rows:
             cached = True
         else:
-            pii_cols = {f.name for f in body.fields if f.classification == "PII"}
-            sample_cols = [f.name for f in body.fields if f.name not in pii_cols]
+            pii_cols = {f.name for f in fields if f.classification == "PII"}
+            sample_cols = [f.name for f in fields if f.name not in pii_cols]
             spec = SampleSpec(columns=sample_cols, pk=body.pk, n=body.sample_size, seed=body.seed)
             sample_sql = connector.build_sample_sql(
                 body.schema_name,
@@ -237,7 +260,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
 
     # Inference per column.
     inferences: dict[str, InferenceResp] = {}
-    for f in body.fields:
+    for f in fields:
         if f.classification == "PII":
             inferences[f.name] = InferenceResp()
             continue
@@ -281,6 +304,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         inferences=inferences,
         schema_fingerprint=profile.schema_fingerprint,
         cached_sample=cached,
+        missing_columns=missing_columns,
     )
 
 
