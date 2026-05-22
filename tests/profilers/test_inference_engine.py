@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import datetime
+
 from dq_platform.profilers.inference_engine import (
     ColumnProfileLite,
     infer_all,
     infer_codelist,
+    infer_date_range,
     infer_enum,
     infer_format,
     infer_length_range,
@@ -213,6 +216,41 @@ class TestInferNumericRange:
     def test_inverted_range_rejected(self) -> None:
         p = ColumnProfileLite(min=100, max=0, distinct=50)
         assert infer_numeric_range(p) is None
+
+
+# ─── infer_date_range ────────────────────────────────────────────────────────
+
+
+class TestInferDateRange:
+    def test_basic_date_objects(self) -> None:
+        p = ColumnProfileLite(min=datetime.date(2020, 1, 1), max=datetime.date(2021, 6, 1))
+        result = infer_date_range(p, "date")
+        assert result is not None
+        assert result.min == "2020-01-01"
+        assert result.max == "2021-06-01"
+
+    def test_truncates_datetime_strings(self) -> None:
+        p = ColumnProfileLite(min="2020-01-01 10:30:00", max="2021-06-01T00:00:00Z")
+        result = infer_date_range(p, "timestamp")
+        assert result is not None
+        assert result.min == "2020-01-01"
+        assert result.max == "2021-06-01"
+
+    def test_non_date_logical_type_skipped(self) -> None:
+        p = ColumnProfileLite(min=0, max=100)
+        assert infer_date_range(p, "number") is None
+
+    def test_non_date_values_rejected(self) -> None:
+        # A date logical_type but numeric aggregates — coercion must reject.
+        p = ColumnProfileLite(min=5, max=9)
+        assert infer_date_range(p, "date") is None
+
+    def test_inverted_range_rejected(self) -> None:
+        p = ColumnProfileLite(min="2025-01-01", max="2020-01-01")
+        assert infer_date_range(p, "date") is None
+
+    def test_missing_aggregates(self) -> None:
+        assert infer_date_range(ColumnProfileLite(), "date") is None
 
 
 # ─── infer_all integration ───────────────────────────────────────────────────

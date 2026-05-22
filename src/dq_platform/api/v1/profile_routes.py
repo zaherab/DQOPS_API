@@ -87,6 +87,8 @@ class InferenceResp(BaseModel):
     length_max: int | None = None
     numeric_min: float | None = None
     numeric_max: float | None = None
+    date_min: str | None = None
+    date_max: str | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -285,6 +287,8 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
             length_max=result.length_range.max if result.length_range else None,
             numeric_min=result.numeric_range.min if result.numeric_range else None,
             numeric_max=result.numeric_range.max if result.numeric_range else None,
+            date_min=result.date_range.min if result.date_range else None,
+            date_max=result.date_range.max if result.date_range else None,
         )
 
     return ProfileResponse(
@@ -352,6 +356,7 @@ async def emit_deterministic(body: EmitRequest) -> EmitResponse:
     # Rehydrate InferenceResult per column from the response shape.
     from dq_platform.profilers.inference_engine import (
         CodelistRef,
+        DateRange,
         EnumCandidate,
         FormatRef,
         LengthRange,
@@ -376,6 +381,11 @@ async def emit_deterministic(body: EmitRequest) -> EmitResponse:
             numeric_range=(
                 NumericRange(min=inf.numeric_min, max=inf.numeric_max)
                 if inf.numeric_min is not None and inf.numeric_max is not None
+                else None
+            ),
+            date_range=(
+                DateRange(min=inf.date_min, max=inf.date_max)
+                if inf.date_min is not None and inf.date_max is not None
                 else None
             ),
         )

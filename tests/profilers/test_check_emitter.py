@@ -296,7 +296,12 @@ class TestWorkedExample:
     Promised dims: completeness 99, uniqueness 100, conformity 95,
                    validity 95, timeliness 95, consistency 100.
     Fields: 8 cols with 3 validity declarations + PK + freshness col.
-    Expected: ~19 emitted checks deterministically.
+
+    The declaration-driven checks below are asserted individually; the
+    conformity promise also fans out the default per-column guards
+    (dirty-text, column_exists, future-date), so the total count is well
+    above the declared-only set. This test pins the declared checks and the
+    promised-dim invariant, not an exact total.
     """
 
     def test_full_emit(self) -> None:
@@ -429,6 +434,130 @@ class TestPromisedDimInvariant:
         out = emit(fields, table_decl, {dim: "95"}, f_profiles, inferences)
         emitted_dims = {c.dimension for c in out.checks}
         assert emitted_dims <= {dim}, f"emit({dim}) leaked dims: {emitted_dims - {dim}}"
+
+
+# ─── Dirty-text detectors ────────────────────────────────────────────────────
+
+
+class TestDirtyText:
+    _DIRTY = {
+        "empty_text_percent",
+        "whitespace_text_percent",
+        "null_placeholder_text_percent",
+        "text_surrounded_by_whitespace_percent",
+    }
+
+    def test_emits_all_four_on_text_column_under_conformity(self) -> None:
+        fields = [FieldDeclaration(name="note", logical_type="string")]
+        out = emit(fields, TableDeclaration(), {"conformity": "95"}, {"note": FieldProfileAggregates()}, {})
+        emitted = {c.check_type for c in out.checks if c.target_column == "note"}
+        assert self._DIRTY <= emitted
+        assert all(c.dimension == "conformity" for c in out.checks if c.check_type in self._DIRTY)
+
+    def test_not_emitted_on_numeric_column(self) -> None:
+        fields = [FieldDeclaration(name="amount", logical_type="number")]
+        out = emit(fields, TableDeclaration(), {"conformity": "95"}, {"amount": FieldProfileAggregates()}, {})
+        assert not (self._DIRTY & {c.check_type for c in out.checks})
+
+    def test_not_emitted_when_conformity_unpromised(self) -> None:
+        fields = [FieldDeclaration(name="note", logical_type="string")]
+        out = emit(fields, TableDeclaration(), {"completeness": "99"}, {"note": FieldProfileAggregates()}, {})
+        assert not (self._DIRTY & {c.check_type for c in out.checks})
+
+    def test_null_placeholder_carries_word_list(self) -> None:
+        fields = [FieldDeclaration(name="note", logical_type="string")]
+        out = emit(fields, TableDeclaration(), {"conformity": "95"}, {"note": FieldProfileAggregates()}, {})
+        check = _find(out.checks, "null_placeholder_text_percent", "note")
+        assert check is not None
+        assert check.parameters["placeholders"] == ["NULL", "N/A", "NA", "NONE"]
+
+
+# ─── Date columns: range + future-date ───────────────────────────────────────
+
+
+class TestDateChecks:
+    def test_accepted_range_on_date_emits_date_in_range_not_number(self) -> None:
+        fields = [
+            FieldDeclaration(
+                name="event_date",
+                logical_type="date",
+                accepted_range=("2020-01-01", "2025-12-31"),  # type: ignore[arg-type]
+            )
+        ]
+        out = emit(fields, TableDeclaration(), {"conformity": "95"}, {"event_date": FieldProfileAggregates()}, {})
+        check = _find(out.checks, "date_in_range_percent", "event_date")
+        assert check is not None
+        assert check.parameters == {"min_date": "2020-01-01", "max_date": "2025-12-31"}
+        # A date column must never be routed to the numeric range check.
+        assert _find(out.checks, "number_in_range_percent", "event_date") is None
+
+    def test_inferred_date_range_emits_with_inference_source(self) -> None:
+        from dq_platform.profilers.inference_engine import DateRange
+
+        fields = [FieldDeclaration(name="event_date", logical_type="timestamp")]
+        inferences = {"event_date": InferenceResult(date_range=DateRange(min="2021-03-01", max="2024-09-09"))}
+        out = emit(
+            fields, TableDeclaration(), {"conformity": "95"}, {"event_date": FieldProfileAggregates()}, inferences
+        )
+        check = _find(out.checks, "date_in_range_percent", "event_date")
+        assert check is not None
+        assert check.source == "inference"
+
+    def test_future_date_guard_emitted_for_date_column(self) -> None:
+        fields = [FieldDeclaration(name="event_date", logical_type="date")]
+        out = emit(fields, TableDeclaration(), {"conformity": "95"}, {"event_date": FieldProfileAggregates()}, {})
+        assert _find(out.checks, "date_values_in_future_percent", "event_date") is not None
+
+
+# ─── New table-level + per-column structural checks ──────────────────────────
+
+
+class TestExpandedStructural:
+    def test_table_availability_emitted_under_coverage(self) -> None:
+        out = emit([], TableDeclaration(), {"coverage": "99"}, {}, {})
+        check = _find(out.checks, "table_availability", None)
+        assert check is not None
+        assert check.dimension == "coverage"
+
+    def test_column_types_changed_companion_to_column_list_changed(self) -> None:
+        out = emit([], TableDeclaration(), {"consistency": "100"}, {}, {})
+        types = {c.check_type for c in out.checks}
+        assert {"column_list_changed", "column_types_changed"} <= types
+
+    def test_duplicate_record_percent_when_no_primary_key(self) -> None:
+        out = emit(
+            [FieldDeclaration(name="a", logical_type="string")],
+            TableDeclaration(),
+            {"uniqueness": "100"},
+            {"a": FieldProfileAggregates()},
+            {},
+        )
+        assert _find(out.checks, "duplicate_record_percent", None) is not None
+
+    def test_duplicate_record_percent_suppressed_when_primary_key_declared(self) -> None:
+        out = emit(
+            [FieldDeclaration(name="id", logical_type="number", primary_key=True)],
+            TableDeclaration(),
+            {"uniqueness": "100"},
+            {"id": FieldProfileAggregates()},
+            {},
+        )
+        assert _find(out.checks, "duplicate_record_percent", None) is None
+
+    def test_column_exists_emitted_per_field_under_conformity(self) -> None:
+        fields = [
+            FieldDeclaration(name="a", logical_type="string"),
+            FieldDeclaration(name="b", logical_type="number"),
+        ]
+        out = emit(
+            fields,
+            TableDeclaration(),
+            {"conformity": "95"},
+            {"a": FieldProfileAggregates(), "b": FieldProfileAggregates()},
+            {},
+        )
+        targets = {c.target_column for c in out.checks if c.check_type == "column_exists"}
+        assert targets == {"a", "b"}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
