@@ -287,6 +287,27 @@ class TestCheckAPI:
         assert "description" in data[0]
         assert "is_column_level" in data[0]
 
+    def test_check_types_expose_resolved_dimension(self, sync_client: TestClient):
+        """GET /checks/types - each type carries its resolved ODPS dimension.
+
+        The dimension must reflect per-check-type overrides, not a plain
+        category lookup: column_count's category is `schema` (→ consistency)
+        but CHECK_TYPE_OVERRIDE maps it to conformity. External orchestrators
+        rely on this field for orphan detection — a category-derived value
+        would disagree with the engine and churn the check every run.
+        """
+        response = sync_client.get("/api/v1/checks/types")
+        assert response.status_code == 200
+        by_type = {t["type"]: t for t in response.json()}
+
+        assert "dimension" in by_type["column_count"]
+        # column_count → conformity via override (NOT consistency from `schema`)
+        assert by_type["column_count"]["dimension"] == "conformity"
+        # column_list_changed → consistency via the `schema` category
+        assert by_type["column_list_changed"]["dimension"] == "consistency"
+        # nulls_percent → completeness via the `nulls` category
+        assert by_type["nulls_percent"]["dimension"] == "completeness"
+
     def test_list_check_types_with_category_filter(self, sync_client: TestClient):
         """GET /checks/types?category=volume - Filter by category works."""
         response = sync_client.get("/api/v1/checks/types?category=volume")

@@ -6,6 +6,8 @@ Deterministic_DQ_Whitepaper.pdf (customer_transactions table).
 
 from __future__ import annotations
 
+import pytest
+
 from dq_platform.profilers.check_emitter import (
     REASON_NO_AUTHORITATIVE_SOURCE,
     REASON_NO_VALIDITY_DECL,
@@ -109,6 +111,8 @@ class TestAcceptedValues:
 
 class TestAcceptedRange:
     def test_emits_number_in_range(self) -> None:
+        # number_in_range_percent is a conformity check (range standards),
+        # so the profile must promise conformity — not validity.
         fields = [
             FieldDeclaration(
                 name="amount",
@@ -116,7 +120,7 @@ class TestAcceptedRange:
                 accepted_range=(0.0, 100000.0),
             )
         ]
-        profile = {"validity": "95"}
+        profile = {"conformity": "95"}
         out = emit(
             fields,
             TableDeclaration(),
@@ -126,9 +130,17 @@ class TestAcceptedRange:
         )
         check = _find(out.checks, "number_in_range_percent", "amount")
         assert check is not None
+        assert check.dimension == "conformity"
         # min_value / max_value are sensor params.
         assert check.parameters["min_value"] == 0.0
         assert check.parameters["max_value"] == 100000.0
+
+    def test_number_in_range_not_emitted_when_only_validity_promised(self) -> None:
+        # Guards the conformity routing: acceptedRange must NOT emit under a
+        # validity-only promise, or the caller churns it as an orphan.
+        fields = [FieldDeclaration(name="amount", logical_type="number", accepted_range=(0.0, 100.0))]
+        out = emit(fields, TableDeclaration(), {"validity": "95"}, {"amount": FieldProfileAggregates()}, {})
+        assert _find(out.checks, "number_in_range_percent", "amount") is None
 
 
 # ─── format=country_code → text_valid_country_code_percent ───────────────────
@@ -228,15 +240,30 @@ class TestTableLevel:
         assert check is not None
 
 
-# ─── Structural defaults always emitted ──────────────────────────────────────
+# ─── Structural defaults gated by promised dims ───────────────────────────────
 
 
 class TestStructuralDefaults:
-    def test_column_count_and_drift_always_emitted(self) -> None:
-        out = emit([], TableDeclaration(), {"consistency": "100"}, {}, {})
-        types = {c.check_type for c in out.checks}
+    def test_structural_checks_emitted_when_dims_promised(self) -> None:
+        # column_count → conformity, column_list_changed → consistency.
+        # Each emits only when its dimension is promised — emitting on an
+        # un-promised dim makes the caller treat it as an orphan and churn it.
+        both = emit([], TableDeclaration(), {"conformity": "95", "consistency": "100"}, {}, {})
+        types = {c.check_type for c in both.checks}
         assert "column_count" in types
         assert "column_list_changed" in types
+
+    def test_no_structural_checks_when_dims_not_promised(self) -> None:
+        out = emit([], TableDeclaration(), {"completeness": "99"}, {}, {})
+        types = {c.check_type for c in out.checks}
+        assert "column_count" not in types
+        assert "column_list_changed" not in types
+
+    def test_column_list_changed_only_when_consistency_promised(self) -> None:
+        out = emit([], TableDeclaration(), {"consistency": "100"}, {}, {})
+        types = {c.check_type for c in out.checks}
+        assert "column_list_changed" in types
+        assert "column_count" not in types  # conformity not promised
 
 
 # ─── not_assessed_reasons ────────────────────────────────────────────────────
@@ -336,24 +363,72 @@ class TestWorkedExample:
         assert ("distinct_percent", "transaction_id") in types
         assert ("nulls_count", "transaction_id") in types
 
-        # Validity declarations
+        # Validity declaration — acceptedValues enum
         assert ("text_found_in_set_percent", "order_status") in types
+
+        # Conformity declarations — range + length standards, plus inferred regex
         assert ("number_in_range_percent", "total_amount") in types
         assert ("number_in_range_percent", "quantity") in types
         assert ("text_length_in_range_percent", "transaction_id") in types
-
-        # Conformity from inferred regex
         assert ("text_matching_regex_percent", "transaction_id") in types
+        for ct, col in (
+            ("number_in_range_percent", "total_amount"),
+            ("text_length_in_range_percent", "transaction_id"),
+        ):
+            c = _find(out.checks, ct, col)
+            assert c is not None and c.dimension == "conformity"
 
         # Timeliness from freshness column — targets the column itself.
         assert ("data_freshness", "updated_at") in types
 
-        # Structural always-on
+        # Structural checks — conformity + consistency both promised here
         assert ("column_count", None) in types
         assert ("column_list_changed", None) in types
 
         # accuracy NOT promised in this profile → no accuracy checks
         assert all(c.dimension != "accuracy" for c in out.checks)
+
+        # Core invariant: nothing emitted outside the promised dim set.
+        assert {c.dimension for c in out.checks} <= set(profile)
+
+
+# ─── Emitter invariant ───────────────────────────────────────────────────────
+
+
+class TestPromisedDimInvariant:
+    """The emitter must never produce a check whose dimension is not promised.
+
+    The caller (dq-auto-run) deletes any check on an un-promised dimension as
+    an orphan, so an emit that violates this invariant causes an infinite
+    create/delete churn across runs. This test exercises every emit path
+    (field decls, inference, table decls, structural defaults) under each
+    single-dimension profile and asserts the subset relation holds.
+    """
+
+    @pytest.mark.parametrize(
+        "dim",
+        ["completeness", "uniqueness", "conformity", "validity", "timeliness", "consistency", "coverage", "accuracy"],
+    )
+    def test_no_check_outside_promised_set(self, dim: str) -> None:
+        fields = [
+            FieldDeclaration(name="id", logical_type="number", primary_key=True),
+            FieldDeclaration(name="status", logical_type="string", accepted_values=["A", "B"]),
+            FieldDeclaration(name="amount", logical_type="number", accepted_range=(0.0, 100.0)),
+            FieldDeclaration(name="country", logical_type="string"),
+        ]
+        f_profiles = {f.name: FieldProfileAggregates(count=100, distinct=100) for f in fields}
+        inferences = {
+            "id": InferenceResult(regex=RegexCandidate(pattern=r"^\d+$", coverage=1.0)),
+            "country": InferenceResult(codelist=CodelistRef(standard="ISO_3166_alpha2", version="2024", coverage=1.0)),
+        }
+        table_decl = TableDeclaration(
+            freshness_column="updated_at",
+            expected_row_count=(10, 1000),
+            consistent_with=[{"product_id": "x", "keys": ["id"]}],
+        )
+        out = emit(fields, table_decl, {dim: "95"}, f_profiles, inferences)
+        emitted_dims = {c.dimension for c in out.checks}
+        assert emitted_dims <= {dim}, f"emit({dim}) leaked dims: {emitted_dims - {dim}}"
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

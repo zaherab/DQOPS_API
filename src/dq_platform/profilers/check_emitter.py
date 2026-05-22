@@ -102,14 +102,29 @@ class EmittedCheck:
       parameters       sensor config (expected_values, regex_pattern,
                        min_value, max_value, min_length, max_length, ...).
       rule_parameters  severity thresholds, keyed warning/error/fatal.
+
+    `dimension` is NOT passed by callers — it is derived from `check_type`
+    in __post_init__ via get_dimension_for_check_type(), the single
+    authoritative check_type → dimension map. Letting each emit site pass a
+    literal allowed it to drift from that map; the caller (dq-auto-run)
+    resolves a check's dimension the same canonical way for orphan detection,
+    so any disagreement made it delete-and-recreate the check every run.
     """
 
     check_type: str
     target_column: str | None
     rule_parameters: dict[str, dict[str, Any]]
-    dimension: str  # ODPS dim
     source: str  # "declaration" | "inference" | "default"
     parameters: dict[str, Any] = field(default_factory=dict)
+    dimension: str = field(init=False)  # derived from check_type
+
+    def __post_init__(self) -> None:
+        dim = get_dimension_for_check_type(self.check_type)
+        if dim is None:
+            raise ValueError(
+                f"check type {self.check_type!r} has no ODPS dimension — it cannot be emitted as a scored check"
+            )
+        self.dimension = dim.value
 
 
 @dataclass
@@ -176,8 +191,9 @@ def emit(
     # ─ Completeness: nulls_percent on every non-PK col when promised ─
     # PK fields already get nulls_count (zero-tolerance); non-PK cols get a
     # rate-based nulls_percent calibrated to the completeness promise.
-    if "completeness" in promised:
-        completeness_promise = promise_for_dimension(dq_profile, "completeness")
+    nulls_dim = _dim_for("nulls_percent")
+    if nulls_dim in promised:
+        completeness_promise = promise_for_dimension(dq_profile, nulls_dim)
         params = thresholds_from_promise("max_percent", _invert_completeness(completeness_promise))
         if params:
             for field_decl in fields:
@@ -188,11 +204,10 @@ def emit(
                         check_type="nulls_percent",
                         target_column=field_decl.name,
                         rule_parameters=params,
-                        dimension="completeness",
                         source="default",
                     )
                 )
-            covered.add("completeness")
+            covered.add(nulls_dim)
 
     # ─ Table-level emissions ─
     table_checks = _emit_table_checks(table_decl, dq_profile, promised)
@@ -200,32 +215,33 @@ def emit(
         checks.append(c)
         covered.add(c.dimension)
 
-    # Always-on structural checks (consistency dim default).
-    structural_dim = get_dimension_for_check_type("column_count")
-    if structural_dim is not None:
-        # column_count → conformity per override; column_list_changed → consistency
+    # Structural checks — emitted only when their dimension is promised.
+    # column_count → conformity per override; column_list_changed → consistency.
+    # Emitting them unconditionally would fight the caller's promised-dims-only
+    # reconciliation: any check on an un-promised dim is treated as an orphan
+    # and deleted, then re-emitted next run — an infinite create/delete churn.
+    structural_dim = _dim_for("column_count")
+    if structural_dim in promised:
         checks.append(
             EmittedCheck(
                 check_type="column_count",
                 target_column=None,
                 rule_parameters={},  # sensor-baseline drift threshold
-                dimension=structural_dim.value,
                 source="default",
             )
         )
-        covered.add(structural_dim.value)
-    drift_dim = get_dimension_for_check_type("column_list_changed")
-    if drift_dim is not None:
+        covered.add(structural_dim)
+    drift_dim = _dim_for("column_list_changed")
+    if drift_dim in promised:
         checks.append(
             EmittedCheck(
                 check_type="column_list_changed",
                 target_column=None,
                 rule_parameters={},
-                dimension=drift_dim.value,
                 source="default",
             )
         )
-        covered.add(drift_dim.value)
+        covered.add(drift_dim)
 
     # ─ Compute not_assessed_reasons ─
     reasons: dict[str, str] = {}
@@ -258,6 +274,20 @@ def _is_numeric_type(logical_type: str | None) -> bool:
     return logical_type.lower() in _NUMERIC_TYPES
 
 
+def _dim_for(check_type: str) -> str:
+    """The canonical ODPS dimension for a check type.
+
+    Single source of truth for every emit decision: the promised-gate, the
+    threshold-promise lookup, and EmittedCheck.dimension all derive from this
+    one value. A branch that gates on a different dimension than the check's
+    canonical one makes the caller orphan-delete and re-emit it every run.
+    """
+    dim = get_dimension_for_check_type(check_type)
+    if dim is None:
+        raise ValueError(f"check type {check_type!r} has no ODPS dimension")
+    return dim.value
+
+
 def _emit_field_checks(
     decl: FieldDeclaration,
     profile: FieldProfileAggregates,
@@ -268,12 +298,18 @@ def _emit_field_checks(
     out: list[EmittedCheck] = []
     is_pii = decl.classification == "PII"
 
+    # Every rule below resolves its dimension from _dim_for(check_type) — the
+    # canonical map — and uses that one value for the promised-gate, the
+    # threshold-promise lookup, and (implicitly, via __post_init__) the
+    # emitted check's dimension. No rule hardcodes a dimension string.
+
     # 1. Primary key → uniqueness + completeness (zero-tolerance).
     #    PK does NOT short-circuit other rules — a PK field can still carry
     #    acceptedLength / acceptedRange / pattern declarations that emit
     #    their own checks. PK only adds the zero-tolerance uniqueness +
     #    nulls-count pair on top.
-    if decl.primary_key and "uniqueness" in promised:
+    pk_dim = _dim_for("distinct_percent")
+    if decl.primary_key and pk_dim in promised:
         params = thresholds_from_promise("min_max_percent", "100")
         if params:
             out.append(
@@ -281,11 +317,10 @@ def _emit_field_checks(
                     check_type="distinct_percent",
                     target_column=decl.name,
                     rule_parameters=params,
-                    dimension="uniqueness",
                     source="declaration",
                 )
             )
-        if "completeness" in promised:
+        if _dim_for("nulls_count") in promised:
             params = thresholds_from_promise("max_count", "99")
             if params:
                 out.append(
@@ -293,14 +328,13 @@ def _emit_field_checks(
                         check_type="nulls_count",
                         target_column=decl.name,
                         rule_parameters=params,
-                        dimension="completeness",
                         source="declaration",
                     )
                 )
 
     # 2. Unique flag (non-PK) → uniqueness
-    if decl.unique and not decl.primary_key and "uniqueness" in promised:
-        promise = promise_for_dimension(dq_profile, "uniqueness")
+    if decl.unique and not decl.primary_key and pk_dim in promised:
+        promise = promise_for_dimension(dq_profile, pk_dim)
         params = thresholds_from_promise("min_max_percent", promise)
         if params:
             out.append(
@@ -308,7 +342,6 @@ def _emit_field_checks(
                     check_type="distinct_percent",
                     target_column=decl.name,
                     rule_parameters=params,
-                    dimension="uniqueness",
                     source="declaration",
                 )
             )
@@ -320,36 +353,39 @@ def _emit_field_checks(
     #    small distinct count is a range, not an enum (handled by rule 4).
     is_numeric = _is_numeric_type(decl.logical_type)
     is_text_col = _is_text_type(decl.logical_type)
+    in_set_type = "number_found_in_set_percent" if is_numeric else "text_found_in_set_percent"
+    in_set_dim = _dim_for(in_set_type)
     values: list[Any] | None = decl.accepted_values
     source = "declaration" if values else None
     # Inferred enum only on text columns. Date/number columns with a
     # small distinct count are ranges, not enums.
-    if values is None and inference.enum and "validity" in promised and not is_pii and is_text_col:
+    if values is None and inference.enum and in_set_dim in promised and not is_pii and is_text_col:
         values = list(inference.enum.values)
         source = "inference"
-    if values is not None and "validity" in promised:
-        promise = promise_for_dimension(dq_profile, "validity")
+    if values is not None and in_set_dim in promised:
+        promise = promise_for_dimension(dq_profile, in_set_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
                 EmittedCheck(
-                    check_type=("number_found_in_set_percent" if is_numeric else "text_found_in_set_percent"),
+                    check_type=in_set_type,
                     target_column=decl.name,
                     rule_parameters=params,
                     parameters={"expected_values": [str(v) for v in values]},
-                    dimension="validity",
                     source=source or "declaration",
                 )
             )
 
-    # 4. acceptedRange OR inferred numeric range → number_in_range_percent
+    # 4. acceptedRange OR inferred numeric range → number_in_range_percent.
+    #    Numeric range = a conformity concern (range standards), per ODPS.
+    nr_dim = _dim_for("number_in_range_percent")
     nrange = decl.accepted_range
     source = "declaration" if nrange else None
-    if nrange is None and inference.numeric_range and "validity" in promised:
+    if nrange is None and inference.numeric_range and nr_dim in promised:
         nrange = (inference.numeric_range.min, inference.numeric_range.max)
         source = "inference"
-    if nrange is not None and "validity" in promised:
-        promise = promise_for_dimension(dq_profile, "validity")
+    if nrange is not None and nr_dim in promised:
+        promise = promise_for_dimension(dq_profile, nr_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
@@ -358,7 +394,6 @@ def _emit_field_checks(
                     target_column=decl.name,
                     rule_parameters=params,
                     parameters={"min_value": nrange[0], "max_value": nrange[1]},
-                    dimension="validity",
                     source=source or "declaration",
                 )
             )
@@ -366,14 +401,15 @@ def _emit_field_checks(
     # 5. acceptedLength → text_length_in_range_percent.
     #    Length checks are text-only. A numeric column's "length" is just
     #    the VARCHAR-cast digit count — meaningless as a quality signal.
+    tl_dim = _dim_for("text_length_in_range_percent")
     is_text = _is_text_type(decl.logical_type)
     lrange = decl.accepted_length if is_text else None
     source = "declaration" if lrange else None
-    if lrange is None and is_text and inference.length_range and "validity" in promised and not is_pii:
+    if lrange is None and is_text and inference.length_range and tl_dim in promised and not is_pii:
         lrange = (inference.length_range.min, inference.length_range.max)
         source = "inference"
-    if lrange is not None and "validity" in promised:
-        promise = promise_for_dimension(dq_profile, "validity")
+    if lrange is not None and tl_dim in promised:
+        promise = promise_for_dimension(dq_profile, tl_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
@@ -382,14 +418,15 @@ def _emit_field_checks(
                     target_column=decl.name,
                     rule_parameters=params,
                     parameters={"min_length": lrange[0], "max_length": lrange[1]},
-                    dimension="validity",
                     source=source or "declaration",
                 )
             )
 
     # 6. format / pattern → format-specific or regex
-    if decl.format == "country_code" and "accuracy" in promised:
-        promise = promise_for_dimension(dq_profile, "accuracy")
+    cc_dim = _dim_for("text_valid_country_code_percent")
+    cur_dim = _dim_for("text_valid_currency_code_percent")
+    if decl.format == "country_code" and cc_dim in promised:
+        promise = promise_for_dimension(dq_profile, cc_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
@@ -397,12 +434,11 @@ def _emit_field_checks(
                     check_type="text_valid_country_code_percent",
                     target_column=decl.name,
                     rule_parameters=params,
-                    dimension="accuracy",
                     source="declaration",
                 )
             )
-    elif decl.format == "currency_code" and "accuracy" in promised:
-        promise = promise_for_dimension(dq_profile, "accuracy")
+    elif decl.format == "currency_code" and cur_dim in promised:
+        promise = promise_for_dimension(dq_profile, cur_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
@@ -410,19 +446,19 @@ def _emit_field_checks(
                     check_type="text_valid_currency_code_percent",
                     target_column=decl.name,
                     rule_parameters=params,
-                    dimension="accuracy",
                     source="declaration",
                 )
             )
     else:
         # Inferred ISO codelist → accuracy via codelist check
-        if inference.codelist is not None and "accuracy" in promised and not is_pii:
+        if inference.codelist is not None and not is_pii:
             check_type = {
                 "ISO_3166_alpha2": "text_valid_country_code_percent",
                 "ISO_4217": "text_valid_currency_code_percent",
             }.get(inference.codelist.standard)
-            if check_type:
-                promise = promise_for_dimension(dq_profile, "accuracy")
+            if check_type and _dim_for(check_type) in promised:
+                cl_dim = _dim_for(check_type)
+                promise = promise_for_dimension(dq_profile, cl_dim)
                 params = thresholds_from_promise("min_percent", promise)
                 if params:
                     out.append(
@@ -430,7 +466,6 @@ def _emit_field_checks(
                             check_type=check_type,
                             target_column=decl.name,
                             rule_parameters=params,
-                            dimension="accuracy",
                             source="inference",
                         )
                     )
@@ -439,16 +474,17 @@ def _emit_field_checks(
         # Inferred regex is text-only — a synthesized pattern over a
         # date/number column's string cast is noise. Explicit pattern/
         # format declarations are honored regardless (producer intent).
+        regex_dim = _dim_for("text_matching_regex_percent")
         pattern: str | None = decl.pattern
         source = "declaration" if pattern else None
         if pattern is None and decl.format:
             pattern = _format_to_regex(decl.format)
             source = "declaration"
-        if pattern is None and is_text and inference.regex and "conformity" in promised and not is_pii:
+        if pattern is None and is_text and inference.regex and regex_dim in promised and not is_pii:
             pattern = inference.regex.pattern
             source = "inference"
-        if pattern is not None and "conformity" in promised:
-            promise = promise_for_dimension(dq_profile, "conformity")
+        if pattern is not None and regex_dim in promised:
+            promise = promise_for_dimension(dq_profile, regex_dim)
             params = thresholds_from_promise("min_percent", promise)
             if params:
                 out.append(
@@ -457,7 +493,6 @@ def _emit_field_checks(
                         target_column=decl.name,
                         rule_parameters=params,
                         parameters={"regex_pattern": pattern},
-                        dimension="conformity",
                         source=source or "declaration",
                     )
                 )
@@ -479,8 +514,9 @@ def _emit_table_checks(
     # The DQOps data_freshness sensor is column-level: it reads
     # MAX({{ column_name }}). The freshness column is the check's
     # target_column, not a sensor parameter.
-    if "timeliness" in promised and table_decl.freshness_column:
-        promise = promise_for_dimension(dq_profile, "timeliness")
+    fresh_dim = _dim_for("data_freshness")
+    if fresh_dim in promised and table_decl.freshness_column:
+        promise = promise_for_dimension(dq_profile, fresh_dim)
         params = thresholds_from_promise("max_value", promise)
         if params:
             out.append(
@@ -488,13 +524,12 @@ def _emit_table_checks(
                     check_type="data_freshness",
                     target_column=table_decl.freshness_column,
                     rule_parameters=params,
-                    dimension="timeliness",
                     source="declaration",
                 )
             )
 
     # row_count — coverage
-    if "coverage" in promised and table_decl.expected_row_count:
+    if _dim_for("row_count") in promised and table_decl.expected_row_count:
         lo, hi = table_decl.expected_row_count
         # row_count is min_max_count rule type. thresholds_from_promise
         # returns None for it (no clean promise→count mapping); we provide
@@ -507,14 +542,14 @@ def _emit_table_checks(
                     "warning": {"min_count": lo, "max_count": hi},
                     "error": {"min_count": max(0, int(lo * 0.9)), "max_count": int(hi * 1.1)},
                 },
-                dimension="coverage",
                 source="declaration",
             )
         )
 
     # consistentWith — cross-source accuracy
-    if "accuracy" in promised and table_decl.consistent_with:
-        promise = promise_for_dimension(dq_profile, "accuracy")
+    match_dim = _dim_for("total_row_count_match_percent")
+    if match_dim in promised and table_decl.consistent_with:
+        promise = promise_for_dimension(dq_profile, match_dim)
         params = thresholds_from_promise("min_percent", promise)
         if params:
             out.append(
@@ -522,7 +557,6 @@ def _emit_table_checks(
                     check_type="total_row_count_match_percent",
                     target_column=None,
                     rule_parameters=params,
-                    dimension="accuracy",
                     source="declaration",
                 )
             )
