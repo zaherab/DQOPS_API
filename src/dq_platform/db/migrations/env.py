@@ -1,13 +1,24 @@
 """Alembic migration environment."""
 
+import asyncio
+import logging
+import socket
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from dq_platform.models.base import Base
+
+logger = logging.getLogger("alembic.env")
+
+CONNECT_MAX_ATTEMPTS = 30
+CONNECT_BACKOFF_BASE = 1.0
+CONNECT_BACKOFF_CAP = 8.0
+TRANSIENT_CONNECT_ERRORS = (ConnectionRefusedError, socket.gaierror, OSError)
 
 config = context.config
 
@@ -39,6 +50,41 @@ def do_run_migrations(connection: Connection) -> None:
         context.run_migrations()
 
 
+def _is_transient_connect_error(exc: BaseException) -> bool:
+    """True if exc is a transient DB-not-ready error (vs. auth/schema)."""
+    if isinstance(exc, TRANSIENT_CONNECT_ERRORS):
+        return True
+    if isinstance(exc, DBAPIError | OperationalError):
+        cause = exc.__cause__ or exc.orig
+        if isinstance(cause, TRANSIENT_CONNECT_ERRORS):
+            return True
+        msg = str(cause or exc).lower()
+        return any(s in msg for s in ("connection refused", "cannot connect", "starting up", "shutting down"))
+    return False
+
+
+async def _connect_with_retry(connectable):
+    """Retry connect on transient failures with exponential backoff + jitter."""
+    import random
+
+    for attempt in range(1, CONNECT_MAX_ATTEMPTS + 1):
+        try:
+            return await connectable.connect().__aenter__()
+        except Exception as exc:
+            if attempt == CONNECT_MAX_ATTEMPTS or not _is_transient_connect_error(exc):
+                raise
+            delay = min(CONNECT_BACKOFF_CAP, CONNECT_BACKOFF_BASE * (2 ** (attempt - 1)))
+            delay += random.uniform(0, delay * 0.1)
+            logger.warning(
+                "DB not ready (attempt %d/%d): %s — retry in %.1fs",
+                attempt,
+                CONNECT_MAX_ATTEMPTS,
+                exc.__class__.__name__,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+
 async def run_async_migrations() -> None:
     """Run migrations in async mode."""
     import os
@@ -53,16 +99,16 @@ async def run_async_migrations() -> None:
         poolclass=pool.NullPool,
     )
 
-    async with connectable.connect() as connection:
+    connection = await _connect_with_retry(connectable)
+    try:
         await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    finally:
+        await connection.close()
+        await connectable.dispose()
 
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    import asyncio
-
     asyncio.run(run_async_migrations())
 
 

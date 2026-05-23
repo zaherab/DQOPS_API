@@ -78,6 +78,12 @@ class NumericRange:
 
 
 @dataclass(frozen=True)
+class DateRange:
+    min: str  # ISO date 'YYYY-MM-DD'
+    max: str  # ISO date 'YYYY-MM-DD'
+
+
+@dataclass(frozen=True)
 class ColumnProfileLite:
     """Subset of profile aggregates inference reads.
 
@@ -109,6 +115,9 @@ _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
 
 
 DEFAULT_COVERAGE = 0.95
+
+# Logical types treated as date-shaped — date_range inference applies.
+_DATE_TYPES = {"date", "datetime", "timestamp", "timestamptz"}
 
 
 # ─── Inference functions ─────────────────────────────────────────────────────
@@ -386,6 +395,44 @@ def infer_numeric_range(
     return NumericRange(min=lo, max=hi)
 
 
+def _coerce_date_str(v: Any) -> str | None:
+    """Coerce a profiled min/max value to an ISO 'YYYY-MM-DD' string.
+
+    Handles `date` / `datetime` objects (which expose `isoformat()`) and
+    strings that begin with a date. Returns None for anything that does not
+    look like a date — a numeric min/max from a mistyped column is rejected.
+    """
+    if v is None:
+        return None
+    iso = getattr(v, "isoformat", None)
+    if callable(iso):
+        return str(iso())[:10]
+    s = str(v).strip()
+    match = re.match(r"\d{4}-\d{2}-\d{2}", s)
+    return match.group(0) if match else None
+
+
+def infer_date_range(
+    profile: ColumnProfileLite,
+    logical_type: str | None = None,
+) -> DateRange | None:
+    """Derive a date range from min / max aggregates for a date-shaped column.
+
+    The observed min/max are used verbatim (no padding) — mirroring
+    infer_numeric_range. Returns None for non-date logical types or when the
+    aggregates do not parse as dates.
+    """
+    if logical_type is not None and logical_type.lower() not in _DATE_TYPES:
+        return None
+    lo = _coerce_date_str(profile.min)
+    hi = _coerce_date_str(profile.max)
+    if lo is None or hi is None:
+        return None
+    if hi < lo:
+        return None
+    return DateRange(min=lo, max=hi)
+
+
 # ─── Public registry of inference functions ──────────────────────────────────
 
 
@@ -399,6 +446,7 @@ class InferenceResult:
     regex: RegexCandidate | None = None
     length_range: LengthRange | None = None
     numeric_range: NumericRange | None = None
+    date_range: DateRange | None = None
 
 
 def infer_all(
@@ -419,4 +467,5 @@ def infer_all(
         regex=infer_regex(sample) if logical_type not in ("number", "integer", "float", "boolean") else None,
         length_range=infer_length_range(profile),
         numeric_range=infer_numeric_range(profile) if logical_type in ("number", "integer", "float") else None,
+        date_range=infer_date_range(profile, logical_type),
     )

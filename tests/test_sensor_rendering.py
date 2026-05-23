@@ -472,3 +472,42 @@ class TestIdentifierValidation:
 
         with pytest.raises(ValueError):
             _validate_identifier("users; DROP TABLE--", "target_table")
+
+
+# ─── Sensor SQL transpilation ────────────────────────────────────────────────
+
+
+class TestSensorTranspile:
+    """_transpile_sensor_sql ports Postgres-authored sensor SQL per dialect."""
+
+    def test_oracle_text_cast_becomes_varchar_not_clob(self) -> None:
+        # Sensor templates cast with `::TEXT`. Naively sqlglot maps TEXT →
+        # Oracle CLOB, which REGEXP_LIKE / LENGTH reject (ORA-22849). The
+        # transpiler must rewrite the cast to a bounded VARCHAR2.
+        from dq_platform.checks.dqops_executor import _transpile_sensor_sql
+
+        sql = "SELECT LENGTH(col::TEXT) FROM t WHERE col::TEXT != ''"
+        out = _transpile_sensor_sql(sql, "oracle")
+        assert "CLOB" not in out.upper()
+        assert "VARCHAR2" in out.upper()
+
+    def test_oracle_regex_cast_is_clob_free(self) -> None:
+        from dq_platform.checks.dqops_executor import _transpile_sensor_sql
+
+        sql = "SELECT COUNT(*) FROM t WHERE col::TEXT ~ '^[A-Z]+$'"
+        out = _transpile_sensor_sql(sql, "oracle")
+        assert "CLOB" not in out.upper()
+
+    def test_mysql_transpile_still_works(self) -> None:
+        # The Oracle-specific rewrite must not regress other dialects.
+        from dq_platform.checks.dqops_executor import _transpile_sensor_sql
+
+        sql = "SELECT LENGTH(col::TEXT) FROM t"
+        out = _transpile_sensor_sql(sql, "mysql")
+        assert "CLOB" not in out.upper()
+
+    def test_postgres_is_not_transpiled(self) -> None:
+        from dq_platform.checks.dqops_executor import _transpile_sensor_sql
+
+        sql = "SELECT LENGTH(col::TEXT) FROM t"
+        assert _transpile_sensor_sql(sql, "postgresql") == sql
