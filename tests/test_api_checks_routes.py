@@ -347,3 +347,130 @@ class TestCheckAPI:
         assert isinstance(data, list)
         assert "daily" in data
         assert "monthly" in data
+
+
+class TestCheckReconcile:
+    """Tests for POST /checks/reconcile — declarative per-product reconcile."""
+
+    @pytest.fixture
+    async def connection(self, db_session):
+        from dq_platform.core.encryption import encrypt_config
+
+        conn = Connection(
+            name="reconcile-conn",
+            connection_type=ConnectionType.POSTGRESQL,
+            config_encrypted=encrypt_config(
+                {
+                    "host": "localhost",
+                    "port": 5432,
+                    "database": "testdb",
+                    "user": "testuser",
+                    "password": "testpass",
+                }
+            ),
+        )
+        db_session.add(conn)
+        await db_session.commit()
+        return conn
+
+    @staticmethod
+    def _desired(column: str) -> dict:
+        return {
+            "name": f"nulls {column}",
+            "check_type": "nulls_percent",
+            "target_schema": "public",
+            "target_table": "users",
+            "target_column": column,
+            "parameters": {},
+            "rule_parameters": {"error": {"max_percent": 5.0}},
+        }
+
+    def test_reconcile_creates_missing_checks(self, sync_client: TestClient, connection):
+        """An empty product gains exactly the desired set, stamped with productId."""
+        resp = sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-A",
+                "desired": [self._desired("id"), self._desired("email")],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["created"] == 2
+        assert body["deleted"] == 0
+        assert len(body["check_ids"]) == 2
+
+    def test_reconcile_deletes_undesired_checks(self, sync_client: TestClient, connection):
+        """A check no longer in the desired set is hard-deleted."""
+        sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-A",
+                "desired": [self._desired("id"), self._desired("email")],
+            },
+        )
+        # Re-reconcile with only one of the two.
+        resp = sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-A",
+                "desired": [self._desired("id")],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["created"] == 0
+        assert body["deleted"] == 1
+        assert len(body["check_ids"]) == 1
+
+    def test_reconcile_is_idempotent(self, sync_client: TestClient, connection):
+        """Re-running an unchanged desired set creates and deletes nothing."""
+        payload = {
+            "connection_id": str(connection.id),
+            "product_id": "prod-A",
+            "desired": [self._desired("id")],
+        }
+        sync_client.post("/api/v1/checks/reconcile", json=payload)
+        resp = sync_client.post("/api/v1/checks/reconcile", json=payload)
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["created"] == 0
+        assert body["deleted"] == 0
+
+    def test_reconcile_is_isolated_per_product(self, sync_client: TestClient, connection):
+        """One product's reconcile never touches another product's checks,
+        even on the same connection and table."""
+        sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-A",
+                "desired": [self._desired("id")],
+            },
+        )
+        # Product B reconciles to an empty set on the same connection/table.
+        resp = sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-B",
+                "desired": [],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["deleted"] == 0  # prod-A's check untouched
+
+        # prod-A still has its check.
+        again = sync_client.post(
+            "/api/v1/checks/reconcile",
+            json={
+                "connection_id": str(connection.id),
+                "product_id": "prod-A",
+                "desired": [self._desired("id")],
+            },
+        )
+        assert again.json()["created"] == 0
+        assert again.json()["deleted"] == 0

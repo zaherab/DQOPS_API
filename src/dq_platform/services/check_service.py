@@ -20,6 +20,7 @@ from dq_platform.checks.dqops_checks import (
 from dq_platform.checks.gx_registry import is_column_level_check
 from dq_platform.checks.sensors import get_sensor
 from dq_platform.models.check import Check, CheckMode, CheckTimeScale, CheckType
+from dq_platform.schemas.check import DesiredCheck
 from dq_platform.services.connection_service import ConnectionService
 
 
@@ -339,6 +340,90 @@ class CheckService:
         check.is_active = False
         await self.db.flush()
         return True
+
+    async def reconcile_product_checks(
+        self,
+        connection_id: UUID,
+        product_id: str,
+        desired: list[DesiredCheck],
+    ) -> tuple[int, int, int, list[UUID]]:
+        """Declaratively drive a product's check set to ``desired``.
+
+        Owned checks are those for ``connection_id`` tagged
+        ``metadata.productId == product_id``. In one transaction this
+        hard-deletes owned checks that are no longer desired (dead columns,
+        dropped dimensions, duplicates, stale leftovers), creates the
+        missing ones (stamped with the productId), and updates drifted rule
+        parameters in place. Atomic — a failure leaves the prior set intact.
+
+        Returns ``(created, deleted, updated, live_check_ids)``.
+        """
+        rows = (
+            (
+                await self.db.execute(
+                    select(Check).where(
+                        Check.connection_id == connection_id,
+                        Check.metadata_["productId"].astext == product_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        Key = tuple[str, str, str, str]
+
+        def key(schema: str | None, table: str, ctype: str, col: str | None) -> Key:
+            return (schema or "", table, ctype, col or "")
+
+        desired_by_key: dict[Key, DesiredCheck] = {}
+        for d in desired:
+            desired_by_key[key(d.target_schema, d.target_table, d.check_type.value, d.target_column)] = d
+
+        # Keep the first owned check matching each desired key; delete the
+        # rest (undesired or duplicate).
+        kept: dict[Key, Check] = {}
+        created = deleted = updated = 0
+        for c in rows:
+            k = key(c.target_schema, c.target_table, c.check_type.value, c.target_column)
+            if k in desired_by_key and k not in kept:
+                kept[k] = c
+            else:
+                await self.db.delete(c)  # hard delete; check_results cascade
+                deleted += 1
+
+        live_ids: list[UUID] = []
+        for k, d in desired_by_key.items():
+            new_rp = d.rule_parameters.model_dump() if d.rule_parameters else None
+            existing = kept.get(k)
+            if existing is not None:
+                changed = False
+                if not existing.is_active:
+                    existing.is_active = True
+                    changed = True
+                if new_rp is not None and existing.rule_parameters != new_rp:
+                    existing.rule_parameters = new_rp
+                    changed = True
+                if changed:
+                    updated += 1
+                live_ids.append(existing.id)
+            else:
+                check = await self.create_check(
+                    name=d.name,
+                    connection_id=connection_id,
+                    check_type=d.check_type,
+                    target_schema=d.target_schema,
+                    target_table=d.target_table,
+                    target_column=d.target_column,
+                    parameters=d.parameters,
+                    metadata={"productId": product_id},
+                    rule_parameters=new_rp,
+                )
+                created += 1
+                live_ids.append(check.id)
+
+        await self.db.flush()
+        return created, deleted, updated, live_ids
 
     async def preview_check(self, check_id: UUID) -> PreviewResult:
         """Preview a check execution without saving results.

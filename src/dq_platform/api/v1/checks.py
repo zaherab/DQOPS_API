@@ -31,6 +31,8 @@ from dq_platform.schemas.check import (
     CheckResponse,
     CheckTypeInfo,
     CheckUpdate,
+    ReconcileRequest,
+    ReconcileResponse,
     RunCheckRequest,
 )
 from dq_platform.schemas.common import PaginatedResponse
@@ -224,6 +226,32 @@ async def batch_run_checks(
             )
 
     return jobs
+
+
+@router.post("/reconcile", response_model=ReconcileResponse)
+async def reconcile_checks(
+    data: ReconcileRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ReconcileResponse:
+    """Declaratively reconcile a product's check set to the desired state.
+
+    One call replaces N per-check create/delete round-trips and is atomic —
+    a failure leaves the prior set intact (no partial registration). Owned
+    checks not in the desired set (dead columns, dropped dimensions,
+    duplicates, stale leftovers) are hard-deleted; missing ones created.
+    """
+    service = CheckService(db)
+    created, deleted, updated, check_ids = await service.reconcile_product_checks(
+        connection_id=data.connection_id,
+        product_id=data.product_id,
+        desired=data.desired,
+    )
+    return ReconcileResponse(
+        created=created,
+        deleted=deleted,
+        updated=updated,
+        check_ids=check_ids,
+    )
 
 
 @router.post("/validate/preview", response_model=CheckExecutionDetail)
