@@ -172,14 +172,23 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
     # that exist, report the rest as missing.
     fields = body.fields
     missing_columns: list[str] = []
+    # A declared PK wins. When the caller declares none — e.g. an ODPS-only
+    # contentSchema with no DQ extensions — fall back to the table's real
+    # primary key so sampling (and therefore format/codelist inference) can
+    # still run. Derived from get_columns() below, which we already call, so
+    # this adds no extra round-trip.
+    resolved_pk = body.pk
     try:
         # Exact-name membership. The declared name is reused verbatim as a
         # quoted identifier in the profile/sample SQL, so a case-mismatched
         # name is unusable anyway — treating it as missing (drop it) is the
         # safe outcome, vs. keeping it and failing the whole query.
-        live_cols = {c.name for c in connector.get_columns(body.schema_name, body.table)}
+        cols = connector.get_columns(body.schema_name, body.table)
+        live_cols = {c.name for c in cols}
         fields = [f for f in body.fields if f.name in live_cols]
         missing_columns = [f.name for f in body.fields if f.name not in live_cols]
+        if not resolved_pk:
+            resolved_pk = next((c.name for c in cols if getattr(c, "is_primary_key", False)), None)
     except Exception:
         # Schema introspection unavailable (permission/network). Fall back to
         # profiling every declared field — no regression vs prior behaviour.
@@ -217,11 +226,12 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         profile = await run_profile(connector, body.schema_name, body.table, field_specs)
         rec.set_result(list(profile.columns.values()))
 
-    # Sample fetch (cached). Only when a PK is declared and at least one
-    # field is text-shaped — otherwise inference has no work to do.
+    # Sample fetch (cached). Only when a PK is available (declared or
+    # introspected) and at least one field is text-shaped — otherwise
+    # inference has no work to do.
     cached = False
     rows: list[dict[str, Any]] = []
-    if body.pk and any(f.sample_needed and f.classification != "PII" for f in fields):
+    if resolved_pk and any(f.sample_needed and f.classification != "PII" for f in fields):
         cache = get_sample_cache()
         cache_key = CacheKey(
             org_id=body.org_id,
@@ -238,12 +248,12 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         else:
             pii_cols = {f.name for f in fields if f.classification == "PII"}
             sample_cols = [f.name for f in fields if f.name not in pii_cols]
-            spec = SampleSpec(columns=sample_cols, pk=body.pk, n=body.sample_size, seed=body.seed)
+            spec = SampleSpec(columns=sample_cols, pk=resolved_pk, n=body.sample_size, seed=body.seed)
             sample_sql = connector.build_sample_sql(
                 body.schema_name,
                 body.table,
                 sample_cols,
-                body.pk,
+                resolved_pk,
                 body.sample_size,
                 body.seed,
             )
