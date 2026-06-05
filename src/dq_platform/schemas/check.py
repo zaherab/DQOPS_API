@@ -227,3 +227,48 @@ class CheckPreviewRequest(BaseModel):
     @classmethod
     def validate_target_column(cls, v: str | None) -> str | None:
         return _validate_identifier(v, "target_column")
+
+
+class DesiredCheck(BaseModel):
+    """One check in a product's desired-state set (declarative reconcile)."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    check_type: CheckType
+    target_schema: str | None = Field(None, max_length=255)
+    target_table: str = Field(..., min_length=1, max_length=255)
+    target_column: str | None = Field(None, max_length=255)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    rule_parameters: RuleParameters | None = None
+
+    @field_validator("target_schema")
+    @classmethod
+    def validate_target_schema(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_schema", allow_dot=True)
+
+    @field_validator("target_table")
+    @classmethod
+    def validate_target_table(cls, v: str) -> str:
+        return _validate_identifier(v, "target_table")  # type: ignore[return-value]
+
+    @field_validator("target_column")
+    @classmethod
+    def validate_target_column(cls, v: str | None) -> str | None:
+        return _validate_identifier(v, "target_column")
+
+
+class ReconcileRequest(BaseModel):
+    """Declarative reconcile: drive a product's registered check set to the
+    desired set in one transaction. Replaces N per-check create/delete calls."""
+
+    connection_id: UUID
+    product_id: str = Field(..., min_length=1)
+    desired: list[DesiredCheck]
+
+
+class ReconcileResponse(BaseModel):
+    """Outcome of a reconcile plus the live check ids to execute."""
+
+    created: int
+    deleted: int
+    updated: int
+    check_ids: list[UUID]

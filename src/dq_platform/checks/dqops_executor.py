@@ -7,6 +7,7 @@ from typing import Any
 import sqlglot
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlglot import exp
 
 from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check
 from dq_platform.checks.rules import Severity, evaluate_rule
@@ -60,6 +61,20 @@ _SQLGLOT_DIALECT: dict[str, str] = {
 _NO_TRANSPILE = {"postgresql", "duckdb", ""}
 
 
+def _text_to_bounded_varchar(node: exp.Expression) -> exp.Expression:
+    """Rewrite a bare TEXT data type to a bounded VARCHAR(4000).
+
+    Sensor templates cast columns with the Postgres `::TEXT` idiom so
+    LENGTH()/REGEXP work on non-text columns. sqlglot maps TEXT → Oracle
+    CLOB, but Oracle's REGEXP_LIKE and several functions reject CLOB
+    (ORA-22849). VARCHAR2(4000) — what TEXT becomes here — is accepted in
+    every sensor context. 4000 is Oracle's non-extended VARCHAR2 ceiling.
+    """
+    if isinstance(node, exp.DataType) and node.this == exp.DataType.Type.TEXT:
+        return exp.DataType.build("VARCHAR(4000)")
+    return node
+
+
 def _transpile_sensor_sql(sql: str, conn_type: str) -> str:
     """Transpile Postgres-authored sensor SQL to the connection's dialect.
 
@@ -73,6 +88,14 @@ def _transpile_sensor_sql(sql: str, conn_type: str) -> str:
     if not target:
         return sql
     try:
+        if target == "oracle":
+            # Oracle: TEXT → CLOB breaks REGEXP_LIKE/LENGTH. Rewrite the
+            # TEXT casts to bounded VARCHAR2 on the parsed tree.
+            ast = sqlglot.parse_one(sql, read="postgres")
+            ast = ast.transform(_text_to_bounded_varchar)
+            transpiled = ast.sql(dialect=target)
+            metrics.incr(SENSOR_TRANSPILE_OK)
+            return transpiled or sql
         out = sqlglot.transpile(sql, read="postgres", write=target)
         metrics.incr(SENSOR_TRANSPILE_OK)
         return out[0] if out else sql

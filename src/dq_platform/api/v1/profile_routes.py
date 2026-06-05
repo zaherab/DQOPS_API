@@ -87,6 +87,8 @@ class InferenceResp(BaseModel):
     length_max: int | None = None
     numeric_min: float | None = None
     numeric_max: float | None = None
+    date_min: str | None = None
+    date_max: str | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -95,6 +97,10 @@ class ProfileResponse(BaseModel):
     inferences: dict[str, InferenceResp]
     schema_fingerprint: str | None
     cached_sample: bool
+    # Declared fields absent from the physical table (schema drift). Profiled
+    # fields skip these; the caller should drop them before emitting checks so
+    # it never registers a check against a non-existent column.
+    missing_columns: list[str] = []
 
 
 class FieldDeclarationBody(BaseModel):
@@ -160,6 +166,34 @@ async def run_profile_endpoint(
 
 
 async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileResponse:
+    # Resolve the live column set first. A declared field that no longer
+    # exists in the physical table (schema drift — column renamed/dropped)
+    # must not blow up the whole profile + sample run. Profile the columns
+    # that exist, report the rest as missing.
+    fields = body.fields
+    missing_columns: list[str] = []
+    # A declared PK wins. When the caller declares none — e.g. an ODPS-only
+    # contentSchema with no DQ extensions — fall back to the table's real
+    # primary key so sampling (and therefore format/codelist inference) can
+    # still run. Derived from get_columns() below, which we already call, so
+    # this adds no extra round-trip.
+    resolved_pk = body.pk
+    try:
+        # Exact-name membership. The declared name is reused verbatim as a
+        # quoted identifier in the profile/sample SQL, so a case-mismatched
+        # name is unusable anyway — treating it as missing (drop it) is the
+        # safe outcome, vs. keeping it and failing the whole query.
+        cols = connector.get_columns(body.schema_name, body.table)
+        live_cols = {c.name for c in cols}
+        fields = [f for f in body.fields if f.name in live_cols]
+        missing_columns = [f.name for f in body.fields if f.name not in live_cols]
+        if not resolved_pk:
+            resolved_pk = next((c.name for c in cols if getattr(c, "is_primary_key", False)), None)
+    except Exception:
+        # Schema introspection unavailable (permission/network). Fall back to
+        # profiling every declared field — no regression vs prior behaviour.
+        fields = body.fields
+
     # Profile (aggregate round-trip).
     field_specs = [
         FieldProfileSpec(
@@ -167,7 +201,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
             logical_type=f.logical_type,
             classification=f.classification,
         )
-        for f in body.fields
+        for f in fields
     ]
     profile_sql = connector.build_profile_sql(
         body.schema_name,
@@ -178,7 +212,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
                 "logical_type": f.logical_type,
                 "classification": f.classification,
             }
-            for f in body.fields
+            for f in fields
         ],
     )
     async with audit(
@@ -192,11 +226,12 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         profile = await run_profile(connector, body.schema_name, body.table, field_specs)
         rec.set_result(list(profile.columns.values()))
 
-    # Sample fetch (cached). Only when a PK is declared and at least one
-    # field is text-shaped — otherwise inference has no work to do.
+    # Sample fetch (cached). Only when a PK is available (declared or
+    # introspected) and at least one field is text-shaped — otherwise
+    # inference has no work to do.
     cached = False
     rows: list[dict[str, Any]] = []
-    if body.pk and any(f.sample_needed and f.classification != "PII" for f in body.fields):
+    if resolved_pk and any(f.sample_needed and f.classification != "PII" for f in fields):
         cache = get_sample_cache()
         cache_key = CacheKey(
             org_id=body.org_id,
@@ -211,14 +246,14 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         if rows:
             cached = True
         else:
-            pii_cols = {f.name for f in body.fields if f.classification == "PII"}
-            sample_cols = [f.name for f in body.fields if f.name not in pii_cols]
-            spec = SampleSpec(columns=sample_cols, pk=body.pk, n=body.sample_size, seed=body.seed)
+            pii_cols = {f.name for f in fields if f.classification == "PII"}
+            sample_cols = [f.name for f in fields if f.name not in pii_cols]
+            spec = SampleSpec(columns=sample_cols, pk=resolved_pk, n=body.sample_size, seed=body.seed)
             sample_sql = connector.build_sample_sql(
                 body.schema_name,
                 body.table,
                 sample_cols,
-                body.pk,
+                resolved_pk,
                 body.sample_size,
                 body.seed,
             )
@@ -237,7 +272,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
 
     # Inference per column.
     inferences: dict[str, InferenceResp] = {}
-    for f in body.fields:
+    for f in fields:
         if f.classification == "PII":
             inferences[f.name] = InferenceResp()
             continue
@@ -262,6 +297,8 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
             length_max=result.length_range.max if result.length_range else None,
             numeric_min=result.numeric_range.min if result.numeric_range else None,
             numeric_max=result.numeric_range.max if result.numeric_range else None,
+            date_min=result.date_range.min if result.date_range else None,
+            date_max=result.date_range.max if result.date_range else None,
         )
 
     return ProfileResponse(
@@ -281,6 +318,7 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         inferences=inferences,
         schema_fingerprint=profile.schema_fingerprint,
         cached_sample=cached,
+        missing_columns=missing_columns,
     )
 
 
@@ -328,6 +366,7 @@ async def emit_deterministic(body: EmitRequest) -> EmitResponse:
     # Rehydrate InferenceResult per column from the response shape.
     from dq_platform.profilers.inference_engine import (
         CodelistRef,
+        DateRange,
         EnumCandidate,
         FormatRef,
         LengthRange,
@@ -352,6 +391,11 @@ async def emit_deterministic(body: EmitRequest) -> EmitResponse:
             numeric_range=(
                 NumericRange(min=inf.numeric_min, max=inf.numeric_max)
                 if inf.numeric_min is not None and inf.numeric_max is not None
+                else None
+            ),
+            date_range=(
+                DateRange(min=inf.date_min, max=inf.date_max)
+                if inf.date_min is not None and inf.date_max is not None
                 else None
             ),
         )

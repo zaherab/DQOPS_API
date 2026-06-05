@@ -14,6 +14,8 @@ engine = create_async_engine(
     max_overflow=settings.database_max_overflow,
     echo=settings.debug,
     pool_pre_ping=True,
+    pool_recycle=1800,
+    connect_args={"timeout": 10, "server_settings": {"jit": "off"}},
 )
 
 async_session_factory = async_sessionmaker(

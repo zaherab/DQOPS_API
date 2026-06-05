@@ -16,19 +16,26 @@ Rules table (priority order, evaluated per field):
   2. primaryKey=True   → distinct_percent (target 100) + nulls_count=0
   3. unique=True       → distinct_percent (target from DQ profile)
   4. acceptedValues OR inferred enum → text_found_in_set_percent
-  5. acceptedRange OR inferred numeric range → number_in_range_percent OR
-                                                date_in_range_percent
+  5. acceptedRange OR inferred range → number_in_range_percent (numeric) OR
+                                       date_in_range_percent (date columns)
   6. acceptedLength    → text_length_in_range_percent
   7. format/pattern OR inferred regex → text_matching_regex_percent
   8. format=country_code           → text_valid_country_code_percent
   9. format=currency_code          → text_valid_currency_code_percent
  10. completeness promised on any  → nulls_percent on every col
  11. classification=PII             → skip sample-dependent checks
- 12. Table-level:
+ 12. text columns → dirty-text detectors (empty / whitespace /
+       null-placeholder / surrounding-whitespace) — hidden values
+       nulls_percent cannot see. Aggregate-only, safe on PII.
+ 13. date columns → date_values_in_future_percent (future timestamps).
+ 14. every field → column_exists (per-column presence guard).
+ 15. Table-level:
        freshnessColumn → data_freshness
        expectedRowCount → row_count (min_max_count)
        consistentWith → total_row_count_match_percent (cross-source)
-       always: column_count + column_list_changed
+       no primaryKey → duplicate_record_percent (full-row dedup)
+       coverage promised → table_availability
+       always: column_count + column_list_changed + column_types_changed
 
 After per-field/table emit, for each PROMISED dim with zero applicable
 checks, record a not_assessed_reason code.
@@ -210,7 +217,8 @@ def emit(
             covered.add(nulls_dim)
 
     # ─ Table-level emissions ─
-    table_checks = _emit_table_checks(table_decl, dq_profile, promised)
+    has_primary_key = any(f.primary_key for f in fields)
+    table_checks = _emit_table_checks(table_decl, dq_profile, promised, has_primary_key)
     for c in table_checks:
         checks.append(c)
         covered.add(c.dimension)
@@ -242,6 +250,20 @@ def emit(
             )
         )
         covered.add(drift_dim)
+    # column_types_changed → consistency. Companion to column_list_changed:
+    # that one hashes the column *names*, this one the column *types* — it
+    # catches a type drift (int → varchar) that leaves the name list intact.
+    types_drift_dim = _dim_for("column_types_changed")
+    if types_drift_dim in promised:
+        checks.append(
+            EmittedCheck(
+                check_type="column_types_changed",
+                target_column=None,
+                rule_parameters={},
+                source="default",
+            )
+        )
+        covered.add(types_drift_dim)
 
     # ─ Compute not_assessed_reasons ─
     reasons: dict[str, str] = {}
@@ -255,6 +277,7 @@ def emit(
 
 _TEXT_TYPES = {"string", "text", "varchar", "char", "str"}
 _NUMERIC_TYPES = {"number", "integer", "float", "int", "numeric", "decimal", "double"}
+_DATE_TYPES = {"date", "datetime", "timestamp", "timestamptz", "time"}
 
 
 def _is_text_type(logical_type: str | None) -> bool:
@@ -272,6 +295,13 @@ def _is_numeric_type(logical_type: str | None) -> bool:
     if logical_type is None:
         return False
     return logical_type.lower() in _NUMERIC_TYPES
+
+
+def _is_date_type(logical_type: str | None) -> bool:
+    """Whether a logical type is date/time-shaped (range / future checks apply)."""
+    if logical_type is None:
+        return False
+    return logical_type.lower() in _DATE_TYPES
 
 
 def _dim_for(check_type: str) -> str:
@@ -376,27 +406,56 @@ def _emit_field_checks(
                 )
             )
 
-    # 4. acceptedRange OR inferred numeric range → number_in_range_percent.
-    #    Numeric range = a conformity concern (range standards), per ODPS.
-    nr_dim = _dim_for("number_in_range_percent")
-    nrange = decl.accepted_range
-    source = "declaration" if nrange else None
-    if nrange is None and inference.numeric_range and nr_dim in promised:
-        nrange = (inference.numeric_range.min, inference.numeric_range.max)
-        source = "inference"
-    if nrange is not None and nr_dim in promised:
-        promise = promise_for_dimension(dq_profile, nr_dim)
-        params = thresholds_from_promise("min_percent", promise)
-        if params:
-            out.append(
-                EmittedCheck(
-                    check_type="number_in_range_percent",
-                    target_column=decl.name,
-                    rule_parameters=params,
-                    parameters={"min_value": nrange[0], "max_value": nrange[1]},
-                    source=source or "declaration",
+    # 4. acceptedRange OR inferred range → range conformity check.
+    #    Range = a conformity concern (range standards), per ODPS. The check
+    #    type splits by column shape: date/timestamp columns get
+    #    date_in_range_percent (min_date/max_date params), every other column
+    #    gets number_in_range_percent (min_value/max_value). A date column's
+    #    bounds make no sense as numeric values and vice versa.
+    is_date = _is_date_type(decl.logical_type)
+    if is_date:
+        dr_dim = _dim_for("date_in_range_percent")
+        # acceptedRange is float-typed for numeric columns; on a date column
+        # it carries date values, and inference supplies date strings — widen
+        # to tuple[Any, Any] so both shapes type-check.
+        drange: tuple[Any, Any] | None = decl.accepted_range
+        source = "declaration" if drange else None
+        if drange is None and inference.date_range and dr_dim in promised:
+            drange = (inference.date_range.min, inference.date_range.max)
+            source = "inference"
+        if drange is not None and dr_dim in promised:
+            promise = promise_for_dimension(dq_profile, dr_dim)
+            params = thresholds_from_promise("min_percent", promise)
+            if params:
+                out.append(
+                    EmittedCheck(
+                        check_type="date_in_range_percent",
+                        target_column=decl.name,
+                        rule_parameters=params,
+                        parameters={"min_date": str(drange[0]), "max_date": str(drange[1])},
+                        source=source or "declaration",
+                    )
                 )
-            )
+    else:
+        nr_dim = _dim_for("number_in_range_percent")
+        nrange = decl.accepted_range
+        source = "declaration" if nrange else None
+        if nrange is None and inference.numeric_range and nr_dim in promised:
+            nrange = (inference.numeric_range.min, inference.numeric_range.max)
+            source = "inference"
+        if nrange is not None and nr_dim in promised:
+            promise = promise_for_dimension(dq_profile, nr_dim)
+            params = thresholds_from_promise("min_percent", promise)
+            if params:
+                out.append(
+                    EmittedCheck(
+                        check_type="number_in_range_percent",
+                        target_column=decl.name,
+                        rule_parameters=params,
+                        parameters={"min_value": nrange[0], "max_value": nrange[1]},
+                        source=source or "declaration",
+                    )
+                )
 
     # 5. acceptedLength → text_length_in_range_percent.
     #    Length checks are text-only. A numeric column's "length" is just
@@ -497,6 +556,70 @@ def _emit_field_checks(
                     )
                 )
 
+    # 12. Dirty-text detectors — conformity. Hidden values that nulls_percent
+    #     cannot see: '' (empty), '   ' (whitespace-only), 'NULL'/'N/A'/'NA'/
+    #     'NONE' (placeholder text), ' value ' (surrounding whitespace). All
+    #     are aggregate-only SQL (no row egress) so they run on PII columns
+    #     too — consistent with nulls_percent, which also covers PII columns.
+    if is_text:
+        for dirty_type in (
+            "empty_text_percent",
+            "whitespace_text_percent",
+            "null_placeholder_text_percent",
+            "text_surrounded_by_whitespace_percent",
+        ):
+            dirty_dim = _dim_for(dirty_type)
+            if dirty_dim not in promised:
+                continue
+            params = thresholds_from_promise("max_percent", promise_for_dimension(dq_profile, dirty_dim))
+            if not params:
+                continue
+            # null_placeholder needs its sensor word list passed explicitly —
+            # the executor does not merge sensor default_params on this path.
+            extra = (
+                {"placeholders": ["NULL", "N/A", "NA", "NONE"]} if dirty_type == "null_placeholder_text_percent" else {}
+            )
+            out.append(
+                EmittedCheck(
+                    check_type=dirty_type,
+                    target_column=decl.name,
+                    rule_parameters=params,
+                    parameters=extra,
+                    source="default",
+                )
+            )
+
+    # 13. Future-date guard — conformity. A timestamp after "now" is almost
+    #     always a data error; needs no declaration to be worth checking.
+    if is_date:
+        future_dim = _dim_for("date_values_in_future_percent")
+        if future_dim in promised:
+            params = thresholds_from_promise("max_percent", promise_for_dimension(dq_profile, future_dim))
+            if params:
+                out.append(
+                    EmittedCheck(
+                        check_type="date_values_in_future_percent",
+                        target_column=decl.name,
+                        rule_parameters=params,
+                        source="default",
+                    )
+                )
+
+    # 14. Per-column presence guard — conformity. Complements the table-level
+    #     column_count / column_list_changed with a precise "column X is
+    #     missing" signal. is_true rule → no promise projection; runs on the
+    #     sensor baseline, like column_count (empty rule_parameters).
+    exists_dim = _dim_for("column_exists")
+    if exists_dim in promised:
+        out.append(
+            EmittedCheck(
+                check_type="column_exists",
+                target_column=decl.name,
+                rule_parameters={},
+                source="default",
+            )
+        )
+
     return out
 
 
@@ -507,6 +630,7 @@ def _emit_table_checks(
     table_decl: TableDeclaration,
     dq_profile: dict[str, Any],
     promised: set[str],
+    has_primary_key: bool,
 ) -> list[EmittedCheck]:
     out: list[EmittedCheck] = []
 
@@ -558,6 +682,37 @@ def _emit_table_checks(
                     target_column=None,
                     rule_parameters=params,
                     source="declaration",
+                )
+            )
+
+    # table_availability — coverage. "Is the table queryable at all." Needs
+    # no declaration; is_true rule → sensor-baseline, empty rule_parameters.
+    avail_dim = _dim_for("table_availability")
+    if avail_dim in promised:
+        out.append(
+            EmittedCheck(
+                check_type="table_availability",
+                target_column=None,
+                rule_parameters={},
+                source="default",
+            )
+        )
+
+    # duplicate_record_percent — uniqueness. Full-row duplicate detection.
+    # Emitted only when no primary key is declared: a declared PK already
+    # gets a distinct_percent uniqueness check (rule 2), which guarantees row
+    # uniqueness and makes a full-row dedup check redundant.
+    dup_dim = _dim_for("duplicate_record_percent")
+    if dup_dim in promised and not has_primary_key:
+        promise = promise_for_dimension(dq_profile, dup_dim)
+        params = thresholds_from_promise("max_percent", promise)
+        if params:
+            out.append(
+                EmittedCheck(
+                    check_type="duplicate_record_percent",
+                    target_column=None,
+                    rule_parameters=params,
+                    source="default",
                 )
             )
 
