@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlglot import exp
 
 from dq_platform.checks.dqops_checks import DQOpsCheckType, get_check
-from dq_platform.checks.rules import Severity, evaluate_rule
+from dq_platform.checks.rules import Severity, evaluate_tiers
 from dq_platform.checks.sensors import QUOTE_CHARS, get_sensor
 from dq_platform.connectors.base import BaseConnector
 from dq_platform.connectors.factory import ConnectorFactory
@@ -149,6 +149,7 @@ class DQOpsExecutor:
         rule_params: dict[str, Any] | None = None,
         partition_filter: str | None = None,
         quote_char: str | None = None,
+        severity_tiers: dict[str, dict[str, Any]] | None = None,
     ) -> CheckExecutionResult:
         """Execute a DQOps check.
 
@@ -158,8 +159,15 @@ class DQOpsExecutor:
             schema_name: Schema/database name.
             table_name: Table name.
             column_name: Column name (for column-level checks).
-            rule_params: Parameters for the rule (thresholds, etc.).
+            rule_params: Tier-independent rule/sensor inputs (regex_pattern,
+                accepted_values, min/max bounds). Merged into both the rendered
+                sensor SQL and every tier's evaluation.
             partition_filter: Optional partition filter for partitioned checks.
+            severity_tiers: Per-severity threshold params
+                (``{"warning": {...}, "error": {...}}``). Evaluated by
+                ``evaluate_tiers`` so the warning band is honoured, not just the
+                most-severe present tier. When None, a single default evaluation
+                runs (sensor-baseline checks).
 
         Returns:
             The check execution result.
@@ -234,18 +242,20 @@ class DQOpsExecutor:
             conn_type=conn_type,
         )
 
-        # Build rule parameters
-        final_rule_params = {}
+        # Tier-independent base params (check defaults + sensor/rule inputs).
+        base_eval_params: dict[str, Any] = {}
         if check.default_params:
-            final_rule_params.update(check.default_params)
+            base_eval_params.update(check.default_params)
         if rule_params:
-            final_rule_params.update(rule_params)
+            base_eval_params.update(rule_params)
 
-        # Evaluate rule
-        rule_result = evaluate_rule(
+        # Evaluate against every present severity tier (escalating to the most
+        # severe breach). One sensor execution, multiple tier evaluations.
+        rule_result = evaluate_tiers(
             check.rule_type,
             sensor_value,
-            final_rule_params,
+            base_eval_params,
+            severity_tiers,
             category=check.category,
             description=check.description,
             sensor_type=check.sensor_type.value,
@@ -396,6 +406,7 @@ async def run_dqops_check(
     partition_filter: str | None = None,
     connector: BaseConnector | None = None,
     quote_char: str | None = None,
+    severity_tiers: dict[str, dict[str, Any]] | None = None,
 ) -> CheckExecutionResult:
     """Convenience function to run a DQOps check.
 
@@ -422,4 +433,5 @@ async def run_dqops_check(
         rule_params=rule_params,
         partition_filter=partition_filter,
         quote_char=quote_char,
+        severity_tiers=severity_tiers,
     )

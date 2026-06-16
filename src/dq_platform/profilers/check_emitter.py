@@ -101,6 +101,21 @@ class FieldProfileAggregates:
 # ─── Outputs ─────────────────────────────────────────────────────────────────
 
 
+def _advisory_thresholds(rule_parameters: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Collapse severity tiers to a single advisory ``warning`` tier.
+
+    Inferred constraints are heuristics, not producer promises. They should
+    surface as advisory warnings (amber), never hard errors (red) that fail a
+    trust score the same way a broken *declared* promise does. The warning
+    keeps the strictest declared threshold (error → fatal → warning), so the
+    signal still lands at the right point — only its severity is lowered.
+    """
+    if not rule_parameters:
+        return rule_parameters
+    chosen = rule_parameters.get("error") or rule_parameters.get("fatal") or rule_parameters.get("warning")
+    return {"warning": chosen} if chosen is not None else rule_parameters
+
+
 @dataclass
 class EmittedCheck:
     """One concrete DQOps check spec ready to register with DQOps.
@@ -132,6 +147,12 @@ class EmittedCheck:
                 f"check type {self.check_type!r} has no ODPS dimension — it cannot be emitted as a scored check"
             )
         self.dimension = dim.value
+        # Provenance shapes severity: an inferred constraint is a heuristic, so
+        # it can only warn (amber), never error (red). Declared promises keep
+        # their full warning/error tiers. Centralised here so no emit site can
+        # forget — mirrors how `dimension` is derived in one place.
+        if self.source == "inference":
+            self.rule_parameters = _advisory_thresholds(self.rule_parameters)
 
 
 @dataclass
@@ -200,8 +221,13 @@ def emit(
     # rate-based nulls_percent calibrated to the completeness promise.
     nulls_dim = _dim_for("nulls_percent")
     if nulls_dim in promised:
+        # Pass the raw completeness promise. nulls_percent is a "lower-is-better"
+        # rate, and thresholds_from_promise("max_percent", ...) already inverts a
+        # pass-rate promise into a null-tolerance (tolerance = 100 - promise).
+        # Pre-inverting here too would double-invert (98% complete → tolerate 98%
+        # nulls), making the completeness check a no-op.
         completeness_promise = promise_for_dimension(dq_profile, nulls_dim)
-        params = thresholds_from_promise("max_percent", _invert_completeness(completeness_promise))
+        params = thresholds_from_promise("max_percent", completeness_promise)
         if params:
             for field_decl in fields:
                 if field_decl.primary_key:
@@ -724,18 +750,6 @@ def _emit_table_checks(
 
 def _covered_by_dim(checks: list[EmittedCheck], dim: str) -> bool:
     return any(c.dimension == dim for c in checks)
-
-
-def _invert_completeness(promise: str | None) -> str | None:
-    """nulls_percent uses max_percent shape, but the dim is completeness which
-    is measured as min_percent. Invert: 99% completeness → 1% nulls max.
-    """
-    from dq_platform.profilers.threshold_engine import parse_promise_percent
-
-    pct = parse_promise_percent(promise)
-    if pct is None:
-        return None
-    return str(max(0.0, 100.0 - pct))
 
 
 _FORMAT_TO_REGEX: dict[str, str] = {

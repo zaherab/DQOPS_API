@@ -846,6 +846,65 @@ def evaluate_rule(
     return result
 
 
+# Most-severe → least-severe. A value that breaches `error` must report `error`,
+# not a less-severe tier that also matched, so evaluation walks this order and
+# returns the first breach.
+_TIER_ORDER: tuple[str, ...] = ("fatal", "error", "warning")
+
+
+def evaluate_tiers(
+    rule_type: RuleType,
+    sensor_value: float | None,
+    base_params: dict[str, Any],
+    tiers: dict[str, dict[str, Any]] | None,
+    category: str | None = None,
+    description: str | None = None,
+    sensor_type: str | None = None,
+) -> RuleResult:
+    """Evaluate a sensor value against every present severity tier.
+
+    ``tiers`` maps a severity name to that tier's threshold params, e.g.
+    ``{"warning": {"max_percent": 1}, "error": {"max_percent": 2}}``. Tiers are
+    evaluated fatal → error → warning and the FIRST (most-severe) breach is
+    returned — so a check with both a warning and an error band reports the
+    error when the error band is crossed and the warning when only the warning
+    band is crossed. (The previous flatten-to-one-tier logic only ever judged
+    the most-severe present tier, leaving the warning band dead.)
+
+    If no tier breaches, the result is PASSED, reported against the least-severe
+    present tier (the tightest band the value satisfied). When ``tiers`` is empty
+    a single default evaluation runs — preserving behaviour for sensor-baseline
+    checks (``column_count``, ``table_availability``, ``is_true``) that carry no
+    severity tiers.
+    """
+    present = [(sev, tiers[sev]) for sev in _TIER_ORDER if tiers and tiers.get(sev)]
+    if not present:
+        return evaluate_rule(
+            rule_type,
+            sensor_value,
+            base_params,
+            category=category,
+            description=description,
+            sensor_type=sensor_type,
+        )
+
+    last_passed: RuleResult | None = None
+    for severity, thresholds in present:
+        params = {**base_params, **thresholds, "severity": severity}
+        result = evaluate_rule(
+            rule_type,
+            sensor_value,
+            params,
+            category=category,
+            description=description,
+            sensor_type=sensor_type,
+        )
+        if not result.passed:
+            return result
+        last_passed = result
+    return last_passed  # type: ignore[return-value]  # present is non-empty
+
+
 def list_rules() -> list[RuleType]:
     """List all registered rule types.
 

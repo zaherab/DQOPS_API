@@ -116,8 +116,22 @@ _FORMAT_PATTERNS: dict[str, re.Pattern[str]] = {
 
 DEFAULT_COVERAGE = 0.95
 
+# Max NULL fraction a column may have before closed-domain inference
+# (enum / ISO codelist) is suppressed. A mostly-empty column never shows its
+# full value domain in a sample, so an inferred "allowed set" is unreliable and
+# the resulting in-set check would re-penalise the very nulls that completeness
+# already owns. Producers who genuinely want a sparse column's domain enforced
+# declare acceptedValues explicitly — declaration always beats inference.
+MAX_NULL_RATE_FOR_DOMAIN = 0.3
+
 # Logical types treated as date-shaped — date_range inference applies.
 _DATE_TYPES = {"date", "datetime", "timestamp", "timestamptz"}
+
+
+def _null_rate(profile: ColumnProfileLite) -> float:
+    """Fraction of the column that is NULL. 0.0 when the total is unknown."""
+    total = profile.count + profile.nulls
+    return profile.nulls / total if total > 0 else 0.0
 
 
 # ─── Inference functions ─────────────────────────────────────────────────────
@@ -460,10 +474,14 @@ def infer_all(
     picks the strongest declaration in priority order. This function
     returns ALL inferences and leaves prioritization to the caller.
     """
+    # Closed-domain inference (enum / ISO codelist) is only trustworthy on a
+    # well-populated column — see MAX_NULL_RATE_FOR_DOMAIN. Suppress both when
+    # the column is too sparse rather than emit a check the data can't support.
+    well_populated = _null_rate(profile) <= MAX_NULL_RATE_FOR_DOMAIN
     return InferenceResult(
         format=infer_format(sample, logical_type),
-        codelist=infer_codelist(sample, logical_type),
-        enum=infer_enum(sample),
+        codelist=infer_codelist(sample, logical_type) if well_populated else None,
+        enum=infer_enum(sample) if well_populated else None,
         regex=infer_regex(sample) if logical_type not in ("number", "integer", "float", "boolean") else None,
         length_range=infer_length_range(profile),
         numeric_range=infer_numeric_range(profile) if logical_type in ("number", "integer", "float") else None,

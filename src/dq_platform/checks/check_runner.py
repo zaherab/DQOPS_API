@@ -1,5 +1,6 @@
 """Unified check execution logic shared between API preview and Celery worker paths."""
 
+import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -13,8 +14,15 @@ from dq_platform.checks.dqops_checks import DQOpsCheckType
 from dq_platform.checks.dqops_checks import get_check as get_dqops_check_def
 from dq_platform.checks.dqops_executor import DQOpsExecutor
 from dq_platform.checks.gx_executor import run_gx_check
-from dq_platform.checks.rules import RuleType, evaluate_rule
+from dq_platform.checks.rules import RuleType, evaluate_tiers
 from dq_platform.checks.sensors import QUOTE_CHARS, get_sensor
+from dq_platform.checks.staging import (
+    STAGING_SCHEMA,
+    STAGING_TABLE,
+    runs_on_staging,
+    staging_connection_config,
+    staging_file_path,
+)
 from dq_platform.models.check import Check
 from dq_platform.models.result import CheckResult
 
@@ -67,16 +75,32 @@ async def run_check(
     except (ValueError, KeyError):
         return await _run_gx_fallback(check, connection_config, executed_at, t0)
 
-    # Build rule parameters
-    rule_params = _build_rule_params(check)
+    # Build rule parameters: tier-independent base + per-severity tiers.
+    base_params, severity_tiers = _build_rule_params(check)
 
-    # Anomaly: inject historical values
+    # Anomaly: inject historical values (tier-independent, used by every tier).
     if dqops_check_def.rule_type == RuleType.ANOMALY_PERCENTILE and db is not None:
-        rule_params["_historical_values"] = await _get_historical_values(db, check)
+        base_params["_historical_values"] = await _get_historical_values(db, check)
 
     # Cross-source: dual-connection execution
     if "reference_connection_id" in (check.parameters or {}):
-        return await _run_cross_source(check, connection_config, dqops_check_def, rule_params, executed_at, db, t0)
+        return await _run_cross_source(
+            check, connection_config, dqops_check_def, base_params, severity_tiers, executed_at, db, t0
+        )
+
+    # Resolve the execution target. In staging mode, column-level *value*
+    # checks run against the typed DuckDB sample (fixes "text >= numeric" on
+    # untyped origins); everything else stays on origin push-down. Falls back
+    # to origin if the sample hasn't been materialized yet.
+    target_config = connection_config
+    schema_name = check.target_schema or "public"
+    table_name = check.target_table
+    if _staging_enabled(check) and runs_on_staging(dqops_check_def):
+        staging_path = staging_file_path(str(check.connection_id), schema_name, table_name)
+        if os.path.exists(staging_path):
+            target_config = staging_connection_config(staging_path)
+            schema_name = STAGING_SCHEMA
+            table_name = STAGING_TABLE
 
     # Execute DQOps check. quote_char is left None so the executor picks
     # the right quoting per dialect — it renders sensor SQL in Postgres
@@ -85,11 +109,12 @@ async def run_check(
     # sqlglot then can't read back as Postgres.
     result = await run_dqops_check(
         check_type=dqops_check_type,
-        connection_config=connection_config,
-        schema_name=check.target_schema or "public",
-        table_name=check.target_table,
+        connection_config=target_config,
+        schema_name=schema_name,
+        table_name=table_name,
         column_name=check.target_column,
-        rule_params=rule_params,
+        rule_params=base_params,
+        severity_tiers=severity_tiers,
     )
 
     return CheckRunResult(
@@ -137,18 +162,37 @@ async def _run_gx_fallback(
     )
 
 
-def _build_rule_params(check: Check) -> dict[str, Any]:
-    """Build rule parameters from check configuration."""
-    rule_params: dict[str, Any] = {}
+def _staging_enabled(check: Check) -> bool:
+    """True when the check's connection opts into sampled DuckDB staging."""
+    conn = getattr(check, "connection", None)
+    meta = getattr(conn, "metadata_", None) or {}
+    return meta.get("execution_mode") == "staging"
+
+
+def _build_rule_params(check: Check) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """Split a check's config into ``(base_params, severity_tiers)``.
+
+    ``base_params`` are the tier-independent sensor/rule inputs from
+    ``check.parameters`` (regex_pattern, accepted_values, min/max bounds) — fed
+    to both the sensor SQL and every tier's evaluation.
+
+    ``severity_tiers`` are the present, non-empty warning/error/fatal threshold
+    dicts from ``check.rule_parameters`` (null keys stripped so they never
+    clobber a base value). ``evaluate_tiers`` then honours every tier instead of
+    only the most-severe one. The previous implementation flattened to a single
+    tier with a ``break``, which left the warning band dead whenever an error
+    band was also present.
+    """
+    base_params: dict[str, Any] = dict(check.parameters or {})
+    tiers: dict[str, dict[str, Any]] = {}
     if check.rule_parameters:
-        for severity in ["fatal", "error", "warning"]:
-            if severity in check.rule_parameters and check.rule_parameters[severity]:
-                rule_params.update(check.rule_parameters[severity])
-                rule_params["severity"] = severity
-                break
-    if check.parameters:
-        rule_params.update(check.parameters)
-    return rule_params
+        for severity in ("fatal", "error", "warning"):
+            tier = check.rule_parameters.get(severity)
+            if tier:
+                cleaned = {k: v for k, v in tier.items() if v is not None}
+                if cleaned:
+                    tiers[severity] = cleaned
+    return base_params, tiers
 
 
 async def _get_historical_values(db: AsyncSession, check: Check, days: int = 90) -> list[float]:
@@ -171,7 +215,8 @@ async def _run_cross_source(
     check: Check,
     connection_config: dict[str, Any],
     dqops_check_def: Any,
-    rule_params: dict[str, Any],
+    base_params: dict[str, Any],
+    severity_tiers: dict[str, dict[str, Any]],
     executed_at: datetime,
     db: AsyncSession | None,
     t0: float,
@@ -253,7 +298,7 @@ async def _run_cross_source(
     else:
         match_percent = min(abs(source_value), abs(ref_value)) / max(abs(source_value), abs(ref_value)) * 100.0
 
-    rule_result = evaluate_rule(dqops_check_def.rule_type, match_percent, rule_params)
+    rule_result = evaluate_tiers(dqops_check_def.rule_type, match_percent, base_params, severity_tiers)
 
     return CheckRunResult(
         passed=rule_result.passed,

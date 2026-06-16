@@ -19,6 +19,7 @@ from dq_platform.profilers.check_emitter import (
 )
 from dq_platform.profilers.inference_engine import (
     CodelistRef,
+    EnumCandidate,
     InferenceResult,
     RegexCandidate,
 )
@@ -198,6 +199,23 @@ class TestCompletenessFallback:
         )
         nulls_targets = {c.target_column for c in out.checks if c.check_type == "nulls_percent"}
         assert nulls_targets == {"a", "b"}
+
+    def test_nulls_percent_threshold_is_not_double_inverted(self) -> None:
+        # Regression: a completeness promise of "98" must tolerate at most 2%
+        # nulls (error.max_percent=2), NOT 98%. The emitter previously pre-
+        # inverted the promise and thresholds_from_promise inverted it again,
+        # yielding max_percent=98 — a no-op completeness check.
+        fields = [FieldDeclaration(name="a", logical_type="string")]
+        out = emit(
+            fields,
+            TableDeclaration(),
+            {"completeness": "98"},
+            {"a": FieldProfileAggregates()},
+            {},
+        )
+        nulls = next(c for c in out.checks if c.check_type == "nulls_percent")
+        assert nulls.rule_parameters["error"]["max_percent"] == 2
+        assert nulls.rule_parameters["warning"]["max_percent"] == 0
 
     def test_no_completeness_when_not_promised(self) -> None:
         fields = [FieldDeclaration(name="a", logical_type="string")]
@@ -558,6 +576,58 @@ class TestExpandedStructural:
         )
         targets = {c.target_column for c in out.checks if c.check_type == "column_exists"}
         assert targets == {"a", "b"}
+
+
+# ─── Provenance shapes severity ──────────────────────────────────────────────
+
+
+class TestInferredSeverityIsAdvisory:
+    """An inferred constraint is a heuristic — it can only warn (amber), never
+    error (red). A declared promise keeps its full warning/error tiers."""
+
+    def test_inferred_enum_warns_only(self) -> None:
+        out = emit(
+            [FieldDeclaration(name="status", logical_type="string")],
+            TableDeclaration(),
+            {"validity": "95"},
+            {"status": FieldProfileAggregates(count=100)},
+            {"status": InferenceResult(enum=EnumCandidate(values=("A", "B"), coverage=1.0))},
+        )
+        check = _find(out.checks, "text_found_in_set_percent", "status")
+        assert check is not None
+        assert check.source == "inference"
+        assert set(check.rule_parameters) == {"warning"}
+        assert "error" not in check.rule_parameters
+
+    def test_declared_accepted_values_keep_error_tier(self) -> None:
+        out = emit(
+            [FieldDeclaration(name="status", logical_type="string", accepted_values=["A", "B"])],
+            TableDeclaration(),
+            {"validity": "95"},
+            {"status": FieldProfileAggregates(count=100)},
+            {},
+        )
+        check = _find(out.checks, "text_found_in_set_percent", "status")
+        assert check is not None
+        assert check.source == "declaration"
+        assert "error" in check.rule_parameters
+
+    def test_inferred_codelist_warns_only(self) -> None:
+        out = emit(
+            [FieldDeclaration(name="country", logical_type="string")],
+            TableDeclaration(),
+            {"accuracy": "95"},
+            {"country": FieldProfileAggregates(count=100)},
+            {
+                "country": InferenceResult(
+                    codelist=CodelistRef(standard="ISO_3166_alpha2", version="2020", coverage=1.0)
+                )
+            },
+        )
+        check = _find(out.checks, "text_valid_country_code_percent", "country")
+        assert check is not None
+        assert check.source == "inference"
+        assert set(check.rule_parameters) == {"warning"}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

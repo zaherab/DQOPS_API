@@ -511,3 +511,46 @@ class TestSensorTranspile:
 
         sql = "SELECT LENGTH(col::TEXT) FROM t"
         assert _transpile_sensor_sql(sql, "postgresql") == sql
+
+
+class TestDateInRangeUpperBound:
+    """Regression: the upper date bound must be exclusive next-day, so a
+    timestamp column's same-day-as-max_date rows are not false-flagged."""
+
+    @pytest.mark.parametrize(
+        "sensor_type",
+        [SensorType.DATE_IN_RANGE_PERCENT, SensorType.DATE_IN_RANGE_COUNT],
+    )
+    def test_upper_bound_is_exclusive_next_day(self, sensor_type: SensorType) -> None:
+        sensor = get_sensor(sensor_type)
+        sql = sensor.render(
+            {
+                "schema_name": "public",
+                "table_name": "t",
+                "column_name": "created_date",
+                "min_date": "2026-06-08",
+                "max_date": "2026-06-11",
+            }
+        )
+        # Half-open interval: lower inclusive, upper exclusive next-day.
+        assert "INTERVAL '1 day'" in sql
+        assert ">= '2026-06-08'::DATE" in sql
+        # No bare midnight-truncating upper bound.
+        assert "<= '2026-06-11'::DATE" not in sql
+
+    def test_exclusive_bound_transpiles_for_mysql(self) -> None:
+        from dq_platform.checks.dqops_executor import _transpile_sensor_sql
+
+        sensor = get_sensor(SensorType.DATE_IN_RANGE_PERCENT)
+        sql = sensor.render(
+            {
+                "schema_name": "public",
+                "table_name": "t",
+                "column_name": "d",
+                "min_date": "2026-01-01",
+                "max_date": "2026-12-31",
+            }
+        )
+        out = _transpile_sensor_sql(sql, "mysql")
+        assert out  # transpiles without raising and produces SQL
+        assert "sensor_value" in out

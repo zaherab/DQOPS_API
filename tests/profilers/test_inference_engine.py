@@ -290,3 +290,39 @@ class TestInferAll:
         assert result.numeric_range is not None
         assert result.numeric_range.min == 1.5
         assert result.numeric_range.max == 99.99
+
+
+# ─── Null-rate gate on closed-domain inference ───────────────────────────────
+
+
+class TestNullRateGate:
+    """Closed-domain inference (enum / codelist) is suppressed on a column that
+    is mostly NULL — a half-empty column under-samples its true domain, so the
+    inferred set is unreliable. Format/regex/range inference is unaffected."""
+
+    def test_high_null_rate_suppresses_inferred_enum(self) -> None:
+        sample = ["Shipped", "Pending", "Cancelled"] * 5
+        # 30 nulls vs 15 non-null → 67% null, well above the 0.3 gate.
+        p = ColumnProfileLite(count=15, nulls=30, distinct=3)
+        result = infer_all(sample, p, logical_type="string")
+        assert result.enum is None
+
+    def test_high_null_rate_suppresses_inferred_codelist(self) -> None:
+        sample = ["US", "GB", "DE", "FR"]
+        p = ColumnProfileLite(count=4, nulls=20, distinct=4, min_len=2, max_len=2)
+        result = infer_all(sample, p, logical_type="string")
+        assert result.codelist is None
+
+    def test_low_null_rate_keeps_inferred_enum(self) -> None:
+        sample = ["Shipped", "Pending", "Cancelled"] * 5
+        # 3 nulls vs 15 non-null → 17% null, within the gate.
+        p = ColumnProfileLite(count=15, nulls=3, distinct=3)
+        result = infer_all(sample, p, logical_type="string")
+        assert result.enum is not None
+
+    def test_gate_does_not_touch_range_inference(self) -> None:
+        # A sparse numeric column still gets its range — only enum/codelist gate.
+        sample = [1.5, 2.7, 99.99, 50.0, 12.0, 77.7]
+        p = ColumnProfileLite(count=6, nulls=60, distinct=6, min=1.5, max=99.99)
+        result = infer_all(sample, p, logical_type="number")
+        assert result.numeric_range is not None

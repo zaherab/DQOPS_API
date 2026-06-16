@@ -13,7 +13,11 @@ from uuid import uuid4
 
 import pytest
 
-from dq_platform.api.v1.profile_routes import ProfileRequest, _profile_and_infer
+from dq_platform.api.v1.profile_routes import (
+    ProfileRequest,
+    _fallback_sample_key,
+    _profile_and_infer,
+)
 
 
 class _FakeColumn:
@@ -170,9 +174,39 @@ async def test_declared_pk_wins_over_table_primary_key() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_sampling_when_no_pk_available() -> None:
-    # Neither a declared PK nor a table PK → no sample is attempted.
+async def test_falls_back_to_highest_cardinality_when_no_pk() -> None:
+    # Neither a declared PK nor a table PK. Rather than skip sampling — which
+    # would silently disable the typed staging copy and all inference — fall
+    # back to a profiled column as the sampling key.
     connector = _FakeConnector(live=["id", "country"])
     await _profile_and_infer(connector, _request(["id", "country"]))
 
-    assert connector.sample_pk is None
+    assert connector.sample_pk in {"id", "country"}
+
+
+# ─── _fallback_sample_key (pure) ─────────────────────────────────────────────
+
+
+class _Col:
+    def __init__(self, distinct: int) -> None:
+        self.distinct = distinct
+
+
+def test_fallback_sample_key_picks_highest_cardinality() -> None:
+    cols = {"a": _Col(2), "b": _Col(99), "c": _Col(40)}
+    assert _fallback_sample_key(cols, set()) == "b"
+
+
+def test_fallback_sample_key_skips_pii() -> None:
+    cols = {"email": _Col(100), "country": _Col(20)}
+    assert _fallback_sample_key(cols, {"email"}) == "country"
+
+
+def test_fallback_sample_key_none_when_no_distinct() -> None:
+    cols = {"a": _Col(0), "b": _Col(0)}
+    assert _fallback_sample_key(cols, set()) is None
+
+
+def test_fallback_sample_key_none_when_all_pii() -> None:
+    cols = {"a": _Col(100)}
+    assert _fallback_sample_key(cols, {"a"}) is None

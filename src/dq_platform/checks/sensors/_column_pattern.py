@@ -411,7 +411,7 @@ DATE_IN_RANGE_COUNT_SENSOR = Sensor(
 SELECT COUNT(*) as sensor_value
 FROM {{ schema_name }}.{{ table_name }}
 WHERE {{ column_name }} >= '{{ min_date }}'::DATE
-  AND {{ column_name }} <= '{{ max_date }}'::DATE
+  AND {{ column_name }} < ('{{ max_date }}'::DATE + INTERVAL '1 day')
 {% if partition_filter %}
   AND {{ partition_filter }}
 {% endif %}
@@ -429,7 +429,7 @@ SELECT
         WHEN COUNT(*) = 0 THEN 100.0
         ELSE (SUM(CASE
             WHEN {{ column_name }} >= '{{ min_date }}'::DATE
-             AND {{ column_name }} <= '{{ max_date }}'::DATE
+             AND {{ column_name }} < ('{{ max_date }}'::DATE + INTERVAL '1 day')
             THEN 1 ELSE 0 END)::FLOAT / COUNT(*)) * 100
     END as sensor_value
 FROM {{ schema_name }}.{{ table_name }}

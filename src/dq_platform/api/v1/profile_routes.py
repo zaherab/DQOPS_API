@@ -11,6 +11,7 @@ register the emitted checks with DQOps.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +40,8 @@ from dq_platform.profilers.profile_runner import (
 from dq_platform.profilers.sample_cache import CacheKey, get_sample_cache
 from dq_platform.profilers.sample_fetcher import SampleSpec, fetch_sample
 from dq_platform.services.profile_audit import audit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
 
@@ -158,14 +161,36 @@ async def run_profile_endpoint(
     conn_record = await conn_service.get(body.connection_id)
     config = decrypt_config(conn_record.config_encrypted)
     connector = get_connector(conn_record.connection_type, config)
+    # Opt-in: when the connection runs in staging mode, the freshly-fetched
+    # sample is materialized into a typed DuckDB file so column-level value
+    # checks run against the typed copy instead of the (possibly untyped)
+    # origin. Materialize here because this path already holds the connector,
+    # the declared types, the resolved PK, and the sample rows in memory.
+    stage = (getattr(conn_record, "metadata_", None) or {}).get("execution_mode") == "staging"
     await connector.connect_async()
     try:
-        return await _profile_and_infer(connector, body)
+        return await _profile_and_infer(connector, body, stage=stage)
     finally:
         await connector.disconnect_async()
 
 
-async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileResponse:
+def _fallback_sample_key(columns: dict[str, Any], pii_names: set[str]) -> str | None:
+    """Pick a sampling key when the table has no declared or physical PK.
+
+    Sampling hashes one column to draw a deterministic, well-spread subset.
+    The best key-less proxy is the highest-cardinality non-PII column — it
+    spreads the hash buckets widest. Returns None when no usable column exists
+    (e.g. every column is PII or empty). Pure — unit-tested in isolation.
+    """
+    ranked = sorted(
+        ((name, getattr(col, "distinct", 0) or 0) for name, col in columns.items() if name not in pii_names),
+        key=lambda kv: kv[1],
+        reverse=True,
+    )
+    return ranked[0][0] if ranked and ranked[0][1] > 0 else None
+
+
+async def _profile_and_infer(connector: Any, body: ProfileRequest, stage: bool = False) -> ProfileResponse:
     # Resolve the live column set first. A declared field that no longer
     # exists in the physical table (schema drift — column renamed/dropped)
     # must not blow up the whole profile + sample run. Profile the columns
@@ -226,9 +251,17 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
         profile = await run_profile(connector, body.schema_name, body.table, field_specs)
         rec.set_result(list(profile.columns.values()))
 
-    # Sample fetch (cached). Only when a PK is available (declared or
-    # introspected) and at least one field is text-shaped — otherwise
-    # inference has no work to do.
+    # Final PK fallback: no declared or introspected primary key. Without a key
+    # the sample (and therefore the typed staging copy + all per-column
+    # inference) would be skipped entirely. Fall back to the highest-cardinality
+    # column from the profile we just computed — reuses the same single-column
+    # sampler, no cross-dialect row hashing needed.
+    if not resolved_pk:
+        resolved_pk = _fallback_sample_key(profile.columns, {f.name for f in fields if f.classification == "PII"})
+
+    # Sample fetch (cached). Only when a PK is available (declared, introspected
+    # or fallback) and at least one field is text-shaped — otherwise inference
+    # has no work to do.
     cached = False
     rows: list[dict[str, Any]] = []
     if resolved_pk and any(f.sample_needed and f.classification != "PII" for f in fields):
@@ -269,6 +302,23 @@ async def _profile_and_infer(connector: Any, body: ProfileRequest) -> ProfileRes
                 rec.set_result(rows)
             if rows:
                 cache.put(cache_key, rows)
+
+    # Staging materialize: write the typed DuckDB sample for column-level value
+    # checks. Non-fatal — on any failure, checks simply fall back to origin
+    # push-down. Skipped when there's no sample (no PK / no text-shaped field).
+    if stage and rows:
+        from dq_platform.checks.staging import materialize_sample, staging_file_path
+
+        stage_cols = [{"name": f.name, "logical_type": f.logical_type} for f in fields if f.classification != "PII"]
+        fp = staging_file_path(str(body.connection_id), body.schema_name, body.table)
+        try:
+            n_staged = materialize_sample(fp, stage_cols, rows)
+            logger.info(
+                "Staging sample materialized",
+                extra={"connection_id": str(body.connection_id), "table": body.table, "rows": n_staged, "path": fp},
+            )
+        except Exception:
+            logger.warning("Staging materialize failed; checks will use origin", exc_info=True)
 
     # Inference per column.
     inferences: dict[str, InferenceResp] = {}
